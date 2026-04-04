@@ -9,15 +9,16 @@ import {
   Clock,
   Sparkles
 } from "lucide-react"
+import Link from "next/link"
 
 export default function Subscription() {
   const { user } = useAuth()
 
   // Mock Plan Data
   const currentPlan = {
-    name: "Pro",
-    price: "₹499/mo",
-    since: "2026-01-15",
+    name: user?.plan === "pro" ? "Pro" : "Free/Basic",
+    price: user?.plan === "pro" ? "₹499/mo" : "₹0/mo",
+    since: user?.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : "2026-01-15",
     features: [
       "Unlimited active campaigns",
       "Full donor analytics & CSV export",
@@ -43,9 +44,9 @@ export default function Subscription() {
             </h1>
             <p className="text-[#64748B] mt-1">Manage your organization's subscription and usage.</p>
           </div>
-          <div className="bg-[#6EE7B7]/10 border border-[#6EE7B7]/20 p-3 rounded-2xl flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-[#6EE7B7]" />
-            <span className="text-sm font-bold text-[#6EE7B7]">PRO VERSION</span>
+          <div className={`${user?.plan === 'pro' ? 'bg-[#6EE7B7]/10 border-[#6EE7B7]/20' : 'bg-gray-500/10 border-gray-500/20'} p-3 rounded-2xl flex items-center gap-2`}>
+            <Sparkles className={`w-5 h-5 ${user?.plan === 'pro' ? 'text-[#6EE7B7]' : 'text-gray-500'}`} />
+            <span className={`text-sm font-bold ${user?.plan === 'pro' ? 'text-[#6EE7B7]' : 'text-gray-500'}`}>{user?.plan?.toUpperCase() || 'BASIC'} VERSION</span>
           </div>
         </div>
 
@@ -97,12 +98,20 @@ export default function Subscription() {
           </div>
 
           <div className="flex gap-4">
-            <button className="flex-1 py-3 bg-[#6EE7B7] text-[#0A0A0F] rounded-xl font-bold hover:opacity-90 transition-opacity">
-              Change Plan
-            </button>
-            <button className="px-6 py-3 border border-red-500/30 text-red-500 rounded-xl font-bold hover:bg-red-500/5 transition-colors">
-              Cancel
-            </button>
+            {user?.plan !== 'pro' ? (
+              <Link href="/pricing" className="flex-1 py-3 bg-[#6EE7B7] text-[#0A0A0F] rounded-xl font-bold hover:opacity-90 transition-opacity text-center">
+                Upgrade to Pro
+              </Link>
+            ) : (
+              <>
+                <button className="flex-1 py-3 bg-[#6EE7B7] text-[#0A0A0F] rounded-xl font-bold hover:opacity-90 transition-opacity">
+                  Change Plan
+                </button>
+                <button className="px-6 py-3 border border-red-500/30 text-red-500 rounded-xl font-bold hover:bg-red-500/5 transition-colors">
+                  Cancel
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

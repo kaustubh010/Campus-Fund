@@ -1,0 +1,280 @@
+#pragma version 10
+
+// Global State Keys: "creator", "goal", "deadline", "total_raised", "is_cancelled"
+// Local State Keys: "contribution"
+
+// --- HANDLE CREATION ---
+txn ApplicationID
+int 0
+==
+bnz handle_create
+
+// --- HANDLE OPT-IN ---
+txn OnCompletion
+int OptIn
+==
+bnz handle_optin
+
+// --- HANDLE DELETE (Only Creator) ---
+txn OnCompletion
+int DeleteApplication
+==
+bnz handle_delete
+
+// --- HANDLE NOOP (Methods) ---
+txn OnCompletion
+int NoOp
+==
+bnz handle_noop
+
+err
+
+handle_create:
+    byte "creator"
+    txn Sender
+    app_global_put
+    byte "goal"
+    txna ApplicationArgs 0
+    btoi
+    app_global_put
+    byte "deadline"
+    txna ApplicationArgs 1
+    btoi
+    app_global_put
+    byte "total_raised"
+    int 0
+    app_global_put
+    byte "is_cancelled"
+    int 0
+    app_global_put
+    int 1
+    return
+
+handle_optin:
+    txn Sender
+    byte "contribution"
+    int 0
+    app_local_put
+    int 1
+    return
+
+handle_delete:
+    txn Sender
+    global CreatorAddress
+    ==
+    return
+
+handle_noop:
+    txna ApplicationArgs 0
+    byte "donate"
+    ==
+    bnz handle_donate
+    txna ApplicationArgs 0
+    byte "claim"
+    ==
+    bnz handle_claim
+    txna ApplicationArgs 0
+    byte "refund"
+    ==
+    bnz handle_refund
+    txna ApplicationArgs 0
+    byte "cancel"
+    ==
+    bnz handle_cancel
+    err
+
+handle_donate:
+    // ensure not cancelled
+    byte "is_cancelled"
+    app_global_get
+    int 0
+    ==
+    assert
+    
+    // next txn in group must be a pay to the app address
+    txn GroupIndex
+    int 1
+    +
+    gtxns TypeEnum
+    int pay
+    ==
+    assert
+    txn GroupIndex
+    int 1
+    +
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    assert
+    // Update global total_raised
+    byte "total_raised"
+    byte "total_raised"
+    app_global_get
+    txn GroupIndex
+    int 1
+    +
+    gtxns Amount
+    +
+    app_global_put
+    // Update local contribution for the sender
+    txn Sender
+    byte "contribution"
+
+    // Get current contribution
+    txn Sender
+    int 0 // Current Application
+    byte "contribution"
+    app_local_get_ex
+    assert // Ensure user is opted in
+
+    // Get donation amount from the second transaction in group
+    txn GroupIndex
+    int 1
+    +
+    gtxns Amount
+    +
+    app_local_put
+    int 1
+    return
+
+handle_claim:
+    // ensure not cancelled
+    byte "is_cancelled"
+    app_global_get
+    int 0
+    ==
+    assert
+    
+    txn Sender
+    byte "creator"
+    app_global_get
+    ==
+    assert
+    byte "total_raised"
+    app_global_get
+    byte "goal"
+    app_global_get
+    >=
+    assert
+
+    // Calculate max spendable claim
+    global CurrentApplicationAddress
+    balance
+    global MinBalance
+    -
+    int 5000 // safer buffer
+    -
+    dup
+    int 0
+    >
+    assert // Ensure we have something to claim
+
+    // Inner transaction for claim
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    byte "creator"
+    app_global_get
+    itxn_field Receiver
+    itxn_field Amount
+    itxn_submit
+    int 1
+    return
+
+handle_cancel:
+    txn Sender
+    global CreatorAddress
+    ==
+    assert
+    byte "is_cancelled"
+    int 1
+    app_global_put
+    int 1
+    return
+
+handle_refund:
+    // check if cancelled
+    byte "is_cancelled"
+    app_global_get
+    int 1
+    ==
+    bnz do_refund
+    
+    // otherwise check deadline and goal
+    global LatestTimestamp
+    byte "deadline"
+    app_global_get
+    >
+    assert
+    byte "total_raised"
+    app_global_get
+    byte "goal"
+    app_global_get
+    <
+    assert
+
+do_refund:
+    txn Sender
+    byte "contribution"
+    app_local_get
+    dup
+    int 0
+    >
+    assert
+    
+    // Safety check: Don't spend below MBR
+    global CurrentApplicationAddress
+    balance
+    global MinBalance
+    -
+    int 2000 // fee + safety
+    -
+    // Stack: contribution, spendable
+    
+    dup 
+    int 0
+    <=
+    bnz pop_and_finish // spendable <= 0
+
+    // Check if spendable < contribution
+    dup // contribution, spendable, spendable
+    dig 2 // contribution, spendable, spendable, contribution
+    < // contribution, spendable, (spendable < contribution)
+    bnz do_partial_refund
+
+    // Normal refund: contribution <= spendable
+    // Stack: contribution, spendable
+    pop // pop spendable
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    txn Sender
+    itxn_field Receiver
+    itxn_field Amount // contribution is at top
+    itxn_submit
+    b finish_refund
+
+do_partial_refund:
+    // Stack: contribution, spendable
+    swap // spendable, contribution
+    pop // pop contribution
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    txn Sender
+    itxn_field Receiver
+    itxn_field Amount // spendable is at top
+    itxn_submit
+    b finish_refund
+
+pop_and_finish:
+    pop // spendable
+    pop // contribution
+
+finish_refund:
+    txn Sender
+    byte "contribution"
+    int 0
+    app_local_put
+    int 1
+    return

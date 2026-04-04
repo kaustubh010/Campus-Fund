@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { lucia } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { waitForConfirmation } from "@/lib/algorand";
 
 export async function POST(
   req: NextRequest,
@@ -10,6 +11,7 @@ export async function POST(
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(lucia.sessionCookieName);
+    const p = await params;
 
     if (!sessionCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,7 +26,7 @@ export async function POST(
       return NextResponse.json({ error: "Only organization accounts can claim funds." }, { status: 403 });
     }
 
-    const campaignId = params.id;
+    const campaignId = p.id;
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: { creator: true }
@@ -42,23 +44,30 @@ export async function POST(
       return NextResponse.json({ error: "Funds have already been claimed" }, { status: 400 });
     }
 
-    // Determine if goal is reached (allowing a small margin for conversion)
-    const isGoalReached = campaign.raisedINR >= campaign.goalINR * 0.99 || campaign.raisedALGO >= campaign.goalALGO * 0.99;
-
-    if (!isGoalReached) {
-      return NextResponse.json({ error: "Campaign goal has not been reached yet" }, { status: 400 });
+    const { txId } = await req.json();
+    if (!txId) {
+      return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
     }
 
-    // In a production app, here we would trigger the Algorand multisig/escrow transfer.
-    // For this prototype, we simulate the success by updating the status and creating a transaction record.
-
-    const txId = "SIMULATED_CLAIM_" + Date.now().toString(16);
+    // Verify transaction on blockchain
+    const confirmResult = await waitForConfirmation(txId);
+    if (!confirmResult.success) {
+      return NextResponse.json({ error: "Transaction verification failed" }, { status: 400 });
+    }
 
     const updatedCampaign = await prisma.$transaction(async (tx) => {
       // 1. Update campaign status
       const updated = await tx.campaign.update({
         where: { id: campaignId },
-        data: { status: "claimed" }
+        data: { status: "claimed" },
+        include: {
+          creator: {
+            select: { name: true, picture: true }
+          },
+          _count: {
+            select: { donations: true }
+          }
+        }
       });
 
       // 2. Create the claim transaction record
@@ -77,12 +86,7 @@ export async function POST(
       return updated;
     });
 
-    return NextResponse.json({
-      success: true,
-      message: "Funds successfully claimed!",
-      txId: txId,
-      campaign: updatedCampaign
-    });
+    return NextResponse.json(updatedCampaign);
   } catch (error: any) {
     console.error("Claim Error:", error.message);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
         name: user.name,
         picture: user.picture || null,
         role: user.role,
+        id: user.id,
       },
     });
   } catch (error: any) {

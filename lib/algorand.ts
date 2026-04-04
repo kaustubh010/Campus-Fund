@@ -88,3 +88,64 @@ export async function waitForConfirmation(txId: string, timeout = 4) {
     };
   }
 }
+
+// Compile TEAL source to bytes
+export async function compileProgram(programSource: string) {
+  const compileResponse = await algodClient.compile(programSource).do();
+  const compiledBytes = new Uint8Array(Buffer.from(compileResponse.result, 'base64'));
+  return compiledBytes;
+}
+
+// Deploy the Crowdfund Smart Contract
+export async function deployCrowdfundApp(
+  creatorMnemonic: string,
+  goalMicroAlgos: number,
+  deadlineTimestamp: number,
+  approvalSource: string,
+  clearSource: string
+) {
+  try {
+    const creatorAccount = algosdk.mnemonicToSecretKey(creatorMnemonic);
+    const params = await algodClient.getTransactionParams().do();
+
+    const approvalProgram = await compileProgram(approvalSource);
+    const clearProgram = await compileProgram(clearSource);
+
+    // Global state: 3 ints (goal, deadline, total_raised), 1 byte (creator)
+    // Local state: 1 int (contribution)
+    const numGlobalInts = 3;
+    const numGlobalByteSlices = 1;
+    const numLocalInts = 1;
+    const numLocalByteSlices = 0;
+
+    const appArgs = [
+      algosdk.encodeUint64(goalMicroAlgos),
+      algosdk.encodeUint64(deadlineTimestamp)
+    ];
+
+    const txn = algosdk.makeApplicationCreateTxnFromObject({
+      from: creatorAccount.addr,
+      suggestedParams: params,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+      approvalProgram,
+      clearProgram,
+      numGlobalInts,
+      numGlobalByteSlices,
+      numLocalInts,
+      numLocalByteSlices,
+      appArgs,
+    });
+
+    const signedTxn = txn.signTxn(creatorAccount.sk);
+    const { txId } = await algodClient.sendRawTransaction(signedTxn).do();
+    
+    const result = await waitForConfirmation(txId);
+    if (!result.success) throw new Error('Deployment failed to confirm');
+
+    const appId = result.confirmation!['application-index'];
+    return { success: true, appId, txId };
+  } catch (error) {
+    console.error('App deployment error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}

@@ -9,6 +9,9 @@ import { toast } from 'react-toastify'
 import { useAuth } from '@/hooks/useAuth'
 import { useAlgoRate } from '@/hooks/useAlgoRate'
 import Link from 'next/link'
+import algosdk from 'algosdk'
+import { algodClient, algoToMicroAlgo, waitForConfirmation } from '@/lib/algorand'
+import { signTransaction } from '@/lib/pera-wallet'
 
 export default function CreateCampaignPage() {
   const router = useRouter()
@@ -83,6 +86,72 @@ export default function CreateCampaignPage() {
 
     setIsSubmitting(true)
     try {
+      // 1. Get Compiled Programs
+      const paramsRes = await fetch('/api/campaigns/deploy-params')
+      const { approvalProgram: approvalBase64, clearProgram: clearBase64, error } = await paramsRes.json()
+      if (error) throw new Error(`Failed to get deploy params: ${error}`)
+
+      const approvalProgram = new Uint8Array(Buffer.from(approvalBase64, 'base64'))
+      const clearProgram = new Uint8Array(Buffer.from(clearBase64, 'base64'))
+
+      // 2. Prepare Deployment Transaction
+      const suggestedParams = await algodClient.getTransactionParams().do()
+      const goalALGO = Number(goalINR) / ALGO_RATE
+      const goalMicroAlgos = algoToMicroAlgo(goalALGO)
+      const deadlineTs = deadline ? Math.floor(new Date(deadline).getTime() / 1000) : Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+
+      const appArgs = [
+        algosdk.encodeUint64(goalMicroAlgos),
+        algosdk.encodeUint64(deadlineTs)
+      ]
+
+      const txn = algosdk.makeApplicationCreateTxnFromObject({
+        from: wallet.address!,
+        suggestedParams,
+        onComplete: algosdk.OnApplicationComplete.NoOpOC,
+        approvalProgram,
+        clearProgram,
+        numGlobalInts: 5,
+        numGlobalByteSlices: 1,
+        numLocalInts: 1,
+        numLocalByteSlices: 0,
+        appArgs,
+      })
+
+      // 3. Sign and Send Deployment
+      toast.info('Deploying Smart Contract. Please sign in Pera Wallet...', { autoClose: 5000 })
+      const signResult = await signTransaction(txn.toByte(), wallet.address!)
+      if (!signResult.success || !signResult.signedTransaction) {
+        throw new Error(signResult.error || 'Failed to sign deployment')
+      }
+
+      const signedResult = signResult.signedTransaction;
+      const signedTxn = Array.isArray(signedResult) ? signedResult[0] : signedResult;
+      const { txId } = await algodClient.sendRawTransaction(signedTxn).do()
+
+      const confirmResult = await waitForConfirmation(txId)
+      if (!confirmResult.success) throw new Error('Deployment confirmation failed')
+
+      const appId = confirmResult.confirmation!['application-index']
+      const escrowAddress = algosdk.getApplicationAddress(appId)
+
+      // 4. Initial Funding (0.2 ALGO for MBR and Fees)
+      toast.info('Funding smart contract for security...', { autoClose: 3000 })
+      const fundTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        from: wallet.address!,
+        to: escrowAddress,
+        amount: 200000, // 0.2 ALGO
+        suggestedParams,
+      })
+
+      const fundSignResult = await signTransaction(fundTxn.toByte(), wallet.address!)
+      if (fundSignResult.success && fundSignResult.signedTransaction) {
+        const signedFundTxn = Array.isArray(fundSignResult.signedTransaction) ? fundSignResult.signedTransaction[0] : fundSignResult.signedTransaction;
+        await algodClient.sendRawTransaction(signedFundTxn).do()
+        await waitForConfirmation(fundTxn.txID())
+      }
+
+      // 4. Update Backend
       const res = await fetch('/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,19 +162,22 @@ export default function CreateCampaignPage() {
           coverImage,
           goalINR: Number(goalINR),
           deadline: deadline || null,
+          appId,
+          escrowAddress
         }),
       })
 
       if (!res.ok) {
-        throw new Error('Failed to create campaign')
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Failed to sync campaign with backend')
       }
 
       const data = await res.json()
       toast.success('Campaign launched successfully!')
       router.push(`/campaigns/${data.campaign.id}`)
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      toast.error('Error creating campaign')
+      toast.error(err.message || 'Error creating campaign')
     } finally {
       setIsSubmitting(false)
     }

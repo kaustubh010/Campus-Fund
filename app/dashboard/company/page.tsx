@@ -111,22 +111,35 @@ export default function CompanyDashboard() {
                 </Link>
               </div>
               <div className="p-6">
-                {/* Mock Campaign Row */}
-                <div className="flex items-center justify-between p-4 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl hover:border-[#6EE7B7]/30 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[#1E1E2E] rounded-lg animate-pulse" />
-                    <div>
-                      <h4 className="font-bold text-[#F1F5F9]">Tech Symposium 2026</h4>
-                      <p className="text-xs text-[#64748B]">80% of ₹10,000 raised</p>
+                {campaigns.length === 0 ? (
+                  <p className="text-[#64748B] text-center py-4">No active campaigns yet.</p>
+                ) : (
+                  campaigns.map((camp: any) => (
+                    <div key={camp.id} className="flex items-center justify-between p-4 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl hover:border-[#6EE7B7]/30 transition-colors mb-4 last:mb-0">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-[#1E1E2E] rounded-lg flex items-center justify-center font-bold text-[#6EE7B7]">
+                          {camp.title[0]}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-[#F1F5F9]">{camp.title}</h4>
+                          <p className="text-xs text-[#64748B]">
+                            {Math.round((camp.raised / camp.goal) * 100)}% of ₹{camp.goal.toLocaleString()} raised
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
+                          camp.status.toLowerCase() === 'active' ? 'bg-[#6EE7B7]/10 text-[#6EE7B7]' : 'bg-[#F1F5F9]/10 text-[#64748B]'
+                        }`}>
+                          {camp.status}
+                        </span>
+                        <Link href={`/campaigns/${camp.id}`} className="text-[#64748B] hover:text-[#F1F5F9]">
+                          <ArrowUpRight className="w-4 h-4" />
+                        </Link>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="px-2 py-1 bg-[#6EE7B7]/10 text-[#6EE7B7] text-[10px] font-bold rounded uppercase">Active</span>
-                    <button className="text-[#64748B] hover:text-[#F1F5F9]">
-                      <ArrowUpRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

@@ -14,6 +14,8 @@ type User = {
   email: string;
   picture: string | null;
   role?: "USER" | "COMPANY";
+  plan?: string;
+  createdAt?: string;
 };
 
 type AuthContextType = {

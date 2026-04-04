@@ -5,6 +5,7 @@ import { lucia } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
 import { getAlgoRate } from '@/lib/coingecko';
+import { algoToMicroAlgo } from '@/lib/algorand';
 
 export async function GET(request: NextRequest) {
   try {
@@ -68,18 +69,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, category, coverImage, goalINR, deadline } = body;
+    const { title, description, category, coverImage, goalINR, deadline, appId, escrowAddress } = body;
 
-    if (!title || !description || !category || !goalINR) {
+    if (!title || !description || !category || !goalINR || !appId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const ALGO_RATE = await getAlgoRate();
     const goalALGO = Number(goalINR) / ALGO_RATE;
-
-    const account = algosdk.generateAccount();
-    const escrowAddress = account.addr.toString();
-    const escrowMnemonic = algosdk.secretKeyToMnemonic(account.sk);
 
     // Fetch company profile to link it
     const companyProfile = await prisma.companyProfile.findUnique({
@@ -96,7 +93,8 @@ export async function POST(request: NextRequest) {
         goalALGO,
         deadline: deadline ? new Date(deadline) : null,
         escrowAddress,
-        escrowMnemonic,
+        escrowMnemonic: 'APP_MANAGED', // No longer using a separate escrow account with mnemonic
+        appId: Number(appId),
         creatorId: user.id,
         companyProfileId: companyProfile?.id
       },

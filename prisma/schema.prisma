@@ -102,6 +102,7 @@ model Campaign {
   creator       User     @relation(fields: [creatorId], references: [id])
   companyProfileId String?
   company          CompanyProfile? @relation(fields: [companyProfileId], references: [id])
+  appId         Int?     // ← Added for smart contract tracking
   donations     Donation[]
   transactions  Transaction[]
   createdAt     DateTime @default(now())

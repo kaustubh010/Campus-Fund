@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { lucia } from '@/lib/auth';
 import { cookies } from 'next/headers';
+import { waitForConfirmation } from '@/lib/algorand';
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -25,8 +26,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Missing donation details' }, { status: 400 });
     }
 
-    // In a real app, you would verify the txId on the Algorand blockchain here before recording it.
-    // For this hackathon scope, we accept the client's txId and update the DB immediately.
+    // Verify the txId on the Algorand blockchain here before recording it.
+    const confirmResult = await waitForConfirmation(txId);
+    if (!confirmResult.success) {
+      return NextResponse.json({ error: 'Transaction verification failed' }, { status: 400 });
+    }
 
     const mutation = await prisma.$transaction(async (tx) => {
       // Record Donation

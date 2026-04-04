@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
           include: {
             _count: { select: { donations: true } },
             donations: {
-              include: { user: { select: { name: true, email: true } } },
+              include: { donor: { select: { name: true, email: true } } },
               orderBy: { createdAt: "desc" }
             }
           }
@@ -40,15 +40,15 @@ export async function GET(req: NextRequest) {
     // 2. Calculate Stats
     const totalRaisedINR = profile.campaigns.reduce((acc: number, c: any) => acc + c.raisedINR, 0);
     const activeCampaigns = profile.campaigns.filter((c: any) => c.status === "Active").length;
-    const totalDonors = new Set(profile.campaigns.flatMap((c: any) => c.donations.map((d: any) => d.userId))).size;
+    const totalDonors = new Set(profile.campaigns.flatMap((c: any) => c.donations.map((d: any) => d.donorId))).size;
     const claimedFundsINR = profile.campaigns.filter((c: any) => c.status === "claimed").reduce((acc: number, c: any) => acc + c.raisedINR, 0);
 
     // 3. Donor Analytics
     const allDonations = profile.campaigns.flatMap((c: any) => 
       c.donations.map((d: any) => ({
         id: d.id,
-        donorName: d.user?.name || "Anonymous",
-        donorEmail: d.user?.email || "N/A",
+        donorName: d.donor?.name || "Anonymous",
+        donorEmail: d.donor?.email || "N/A",
         amountINR: d.amountINR,
         campaign: c.title,
         date: d.createdAt

@@ -38,29 +38,31 @@ export async function disconnectPera() {
 }
 
 export async function signTransaction(
-  txnBytes: Uint8Array | number[],
+  txnBytes: Uint8Array | number[] | Uint8Array[],
   signer: string
 ) {
   try {
-    const txnUint8 = txnBytes instanceof Uint8Array ? txnBytes : new Uint8Array(txnBytes);
-    const decodedTxn = algosdk.decodeUnsignedTransaction(txnUint8);
+    let txns: Uint8Array[];
+    
+    if (Array.isArray(txnBytes) && txnBytes.length > 0 && txnBytes[0] instanceof Uint8Array) {
+      txns = txnBytes as Uint8Array[];
+    } else {
+      txns = [new Uint8Array(txnBytes as number[])];
+    }
 
-    const txGroups = [
-      [
-        {
-          txn: decodedTxn,
-          signers: [signer],
-        },
-      ],
-    ];
+    const txGroups = txns.map(t => ({
+      txn: algosdk.decodeUnsignedTransaction(t),
+      signers: [signer],
+    }));
 
-    const signed = await peraWallet.signTransaction(txGroups);
+    const signed = await peraWallet.signTransaction([txGroups]);
 
     return {
       success: true,
-      signedTransaction: signed[0],
+      signedTransaction: signed.length === 1 ? signed[0] : signed,
     };
   } catch (error: any) {
+    console.error('Pera sign error:', error);
     return { success: false, error: error.message };
   }
 }
