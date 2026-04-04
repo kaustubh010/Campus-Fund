@@ -1,0 +1,127 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Dark Forest Green Minecraft theme */
+  --background: #1a2818;
+  --foreground: #a8d5a8;
+  --card: #2d3d2b;
+  --card-foreground: #a8d5a8;
+  --popover: #354a32;
+  --popover-foreground: #a8d5a8;
+  --primary: #6cd946;
+  --primary-foreground: #ffffff;
+  --secondary: #4a7c3a;
+  --secondary-foreground: #ffffff;
+  --muted: #3d5a3b;
+  --muted-foreground: #7aa878;
+  --accent: #f4d135;
+  --accent-foreground: #1a2818;
+  --destructive: #ff6b6b;
+  --destructive-foreground: #ffffff;
+  --border: #3d5a3b;
+  --input: #2d3d2b;
+  --ring: #6cd946;
+  --chart-1: #6cd946;
+  --chart-2: #f4d135;
+  --chart-3: #40e0d0;
+  --chart-4: #ff6b6b;
+  --chart-5: #7aa878;
+  --radius: 0px;
+  --sidebar: #1a2818;
+  --sidebar-foreground: #a8d5a8;
+  --sidebar-primary: #6cd946;
+  --sidebar-primary-foreground: #1a2818;
+  --sidebar-accent: #f4d135;
+  --sidebar-accent-foreground: #1a2818;
+  --sidebar-border: #3d5a3b;
+  --sidebar-ring: #6cd946;
+}
+
+.dark {
+  /* Dark Forest Green theme - default mode */
+  --background: #1a2818;
+  --foreground: #a8d5a8;
+  --card: #2d3d2b;
+  --card-foreground: #a8d5a8;
+  --popover: #354a32;
+  --popover-foreground: #a8d5a8;
+  --primary: #6cd946;
+  --primary-foreground: #ffffff;
+  --secondary: #4a7c3a;
+  --secondary-foreground: #ffffff;
+  --muted: #3d5a3b;
+  --muted-foreground: #7aa878;
+  --accent: #f4d135;
+  --accent-foreground: #1a2818;
+  --destructive: #ff6b6b;
+  --destructive-foreground: #a8d5a8;
+  --border: #3d5a3b;
+  --input: #2d3d2b;
+  --ring: #6cd946;
+  --chart-1: #6cd946;
+  --chart-2: #f4d135;
+  --chart-3: #40e0d0;
+  --chart-4: #ff6b6b;
+  --chart-5: #7aa878;
+  --sidebar: #0f1811;
+  --sidebar-foreground: #a8d5a8;
+  --sidebar-primary: #6cd946;
+  --sidebar-primary-foreground: #1a2818;
+  --sidebar-accent: #f4d135;
+  --sidebar-accent-foreground: #1a2818;
+  --sidebar-border: #3d5a3b;
+  --sidebar-ring: #6cd946;
+}
+
+@theme inline {
+  --font-sans: 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

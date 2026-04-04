@@ -1,0 +1,148 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  COMPANY
+}
+
+
+
+model User {
+  id             String    @id
+  googleId       String?    @unique @map("google_id")
+  email          String    @unique
+  sessions       Session[]
+  hashedPassword String    @map("hashed_password")
+  name       String?   @map("full_name")
+  picture String?   @map("profile_picture")
+  role           Role      @default(USER)
+  plan           String    @default("none")
+  walletAddress  String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+  goals          Goal[]
+  campaigns      Campaign[]
+  donations      Donation[]
+  transactions   Transaction[]
+  companyProfile CompanyProfile?
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+model Goal {
+  id              String    @id @default(cuid())
+  name            String
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  description     String?
+  imageUrl        String?
+  target          Float
+  deposited       Float     @default(0)
+  status          String    @default("active") // active, successful, claimed
+  isClaimed       Boolean   @default(false)
+  deadline        DateTime?
+  walletAddress   String // goal owner's Pera address
+  depositAddress  String?   @unique // ← Algorand address for this goal
+  depositMnemonic String?
+  category        String?   @default("campus")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deposits        Deposit[]
+
+  @@index([walletAddress])
+}
+
+model Deposit {
+  id            String   @id @default(cuid())
+  goalId        String
+  goal          Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  amount        Float
+  txnId         String?  @unique // ← Algorand transaction ID
+  walletAddress String
+  timestamp     DateTime @default(now())
+  status        String   @default("pending")
+
+  @@index([goalId])
+  @@index([walletAddress])
+}
+
+model Campaign {
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  category      String
+  coverImage    String?
+  goalINR       Float
+  goalALGO      Float
+  raisedINR     Float    @default(0)
+  raisedALGO    Float    @default(0)
+  deadline      DateTime?
+  escrowAddress String
+  escrowMnemonic String  @map("escrow_mnemonic")
+  status        String   @default("active")  // active | funded | claimed | expired
+  creatorId     String
+  creator       User     @relation(fields: [creatorId], references: [id])
+  companyProfileId String?
+  company          CompanyProfile? @relation(fields: [companyProfileId], references: [id])
+  donations     Donation[]
+  transactions  Transaction[]
+  createdAt     DateTime @default(now())
+}
+
+model CompanyProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orgName       String
+  orgType       String
+  contactPerson String
+  university    String?
+  description   String?
+  logoUrl       String?
+  createdAt     DateTime @default(now())
+  campaigns     Campaign[]
+}
+
+model Donation {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  donorId     String
+  donor       User     @relation(fields: [donorId], references: [id])
+  amountINR   Float
+  amountALGO  Float
+  txId        String
+  createdAt   DateTime @default(now())
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amountINR   Float
+  amountALGO  Float
+  type        String   // Donation, Claim, Refund
+  status      String   // success, pending, failed
+  txId        String
+  createdAt   DateTime @default(now())
+}
