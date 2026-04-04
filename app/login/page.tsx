@@ -148,8 +148,8 @@ export default function LoginPage() {
       
       {/* Navbar Minimal */}
       <div className="w-full max-w-md mx-auto z-10 hidden md:flex items-center gap-2 mb-8">
-        <div className="w-10 h-10 bg-[#6EE7B7] flex items-center justify-center font-bold text-sm rounded-lg text-[#0A0A0F]">
-          CF
+        <div className="w-10 h-10 flex items-center justify-center font-bold text-sm rounded-lg text-[#0A0A0F]">
+          <img src="/emerald.png" alt="" />
         </div>
         <span className="text-2xl font-bold text-[#F1F5F9] font-[Syne] tracking-wide group-hover:text-[#6EE7B7] transition-colors">CampusFund</span>
       </div>

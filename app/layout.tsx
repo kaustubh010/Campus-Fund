@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Syne, DM_Sans, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
-import { CrowdfundProvider } from "@/lib/context";
+
 import "./globals.css";
 import { WalletProvider } from "@/context/wallet-context";
 import { Navbar } from "@/components/navbar";
@@ -26,13 +26,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${syne.variable} ${dmSans.variable} ${jetbrainsMono.variable} font-sans antialiased bg-[#0A0A0F] text-[#F1F5F9]`}>
         <AuthProvider>
-          <CrowdfundProvider>
             <WalletProvider>
               <Navbar />
               {children}
               <ToastContainer position="bottom-right" />
             </WalletProvider>
-          </CrowdfundProvider>
           <Analytics />
         </AuthProvider>
       </body>

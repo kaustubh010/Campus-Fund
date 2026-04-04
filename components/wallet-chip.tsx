@@ -2,10 +2,24 @@
 
 import { useWallet } from '@/context/wallet-context'
 import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { getAccountInfo } from '@/lib/algorand'
 
 export function WalletChip() {
   const { wallet } = useWallet()
   const router = useRouter()
+  const [balance, setBalance] = useState<string>('0.00')
+
+  useEffect(() => {
+    if (wallet.isConnected && wallet.address) {
+      getAccountInfo(wallet.address).then((info) => {
+        if (info.success && info.accountInfo) {
+          const balanceAlgos = Number(info.accountInfo.amount) / 1_000_000
+          setBalance(balanceAlgos.toFixed(2))
+        }
+      })
+    }
+  }, [wallet.isConnected, wallet.address])
 
   const truncateAddress = (addr: string) => {
     return `${addr.slice(0, 4)}...${addr.slice(-4)}`
@@ -35,7 +49,7 @@ export function WalletChip() {
             {truncateAddress(wallet.address || '')}
           </span>
           <span className="text-[#6EE7B7] text-xs font-bold bg-[#6EE7B7]/10 px-1.5 py-0.5 rounded-md">
-            0.00 ALGO
+            {balance} ALGO
           </span>
         </>
       ) : (

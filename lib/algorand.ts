@@ -72,3 +72,19 @@ export async function checkTransactionStatus(txId: string) {
     };
   }
 }
+
+// Wait for a transaction to be confirmed
+export async function waitForConfirmation(txId: string, timeout = 4) {
+  try {
+    const confirmation = await algosdk.waitForConfirmation(algodClient, txId, timeout);
+    return {
+      success: true,
+      confirmation,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}

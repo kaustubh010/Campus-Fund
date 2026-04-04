@@ -38,16 +38,17 @@ export async function disconnectPera() {
 }
 
 export async function signTransaction(
-  txnBytes: number[],
+  txnBytes: Uint8Array | number[],
   signer: string
 ) {
   try {
-    const txnUint8 = new Uint8Array(txnBytes);
+    const txnUint8 = txnBytes instanceof Uint8Array ? txnBytes : new Uint8Array(txnBytes);
+    const decodedTxn = algosdk.decodeUnsignedTransaction(txnUint8);
 
     const txGroups = [
       [
         {
-          txn: txnUint8,
+          txn: decodedTxn,
           signers: [signer],
         },
       ],
@@ -57,7 +58,7 @@ export async function signTransaction(
 
     return {
       success: true,
-      signedTransaction: signed[0][0],
+      signedTransaction: signed[0],
     };
   } catch (error: any) {
     return { success: false, error: error.message };

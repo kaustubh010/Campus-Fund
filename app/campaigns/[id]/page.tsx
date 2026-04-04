@@ -8,6 +8,9 @@ import { ExternalLink, Copy, CheckCircle2, Lock, Unlock, ShieldCheck, Users, Cal
 import { toast } from 'react-toastify'
 import { useAlgoRate } from '@/hooks/useAlgoRate'
 import Link from 'next/link'
+import algosdk from 'algosdk'
+import { algodClient, algoToMicroAlgo, waitForConfirmation } from '@/lib/algorand'
+import { signTransaction } from '@/lib/pera-wallet'
 
 export default function CampaignDetailPage() {
   const params = useParams()
@@ -58,19 +61,43 @@ export default function CampaignDetailPage() {
 
     setProcessing(true)
     try {
-      // Real app: trigger Pera connect logic here to sign payment transaction 
-      // await sendAlgorandTransaction(wallet.address, campaign.escrowAddress, amountInr / ALGO_RATE)
+      const amountAlgo = amountInr / ALGO_RATE;
+      const microAlgos = algoToMicroAlgo(amountAlgo);
+
+      toast.info('Please accept the transaction in your Pera Wallet', { autoClose: false, toastId: 'pera-toast' })
+      const suggestedParams = await algodClient.getTransactionParams().do()
       
-      // Simulate delay for Pera Wallet Connect
-      await new Promise(res => setTimeout(res, 1500))
+      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        from: wallet.address!,
+        to: campaign.escrowAddress,
+        amount: microAlgos,
+        suggestedParams,
+      })
+
+      const signResult = await signTransaction(txn.toByte(), wallet.address!)
+      if (!signResult.success || !signResult.signedTransaction) {
+        toast.dismiss('pera-toast')
+        throw new Error(signResult.error || 'Failed to sign transaction')
+      }
+
+      toast.update('pera-toast', { render: 'Processing transaction...', type: 'info' })
+      const signedTxn = signResult.signedTransaction as Uint8Array;
+      const { txId } = await algodClient.sendRawTransaction(signedTxn).do()
+
+      const confirmResult = await waitForConfirmation(txId)
+      if (!confirmResult.success) {
+        toast.dismiss('pera-toast')
+        throw new Error(confirmResult.error || 'Transaction confirmation failed')
+      }
       
+      toast.dismiss('pera-toast')
       const res = await fetch(`/api/campaigns/${campaignId}/donate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amountINR: amountInr,
-          amountALGO: amountInr / ALGO_RATE,
-          txId: 'TXN_' + Math.random().toString(36).substr(2, 9).toUpperCase()
+          amountALGO: amountAlgo,
+          txId: txId
         })
       })
 
