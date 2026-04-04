@@ -150,12 +150,6 @@ export function Navbar() {
                             <Sparkles className="w-4 h-4" /> Upgrade to Org
                           </Link>
                         )}
-                        <button className="w-full text-left px-3 py-2 text-sm text-[#F1F5F9] hover:bg-[#1E1E2E] rounded-xl flex items-center gap-3">
-                          <User className="w-4 h-4 text-[#64748B]" /> My Profile
-                        </button>
-                        <button className="w-full text-left px-3 py-2 text-sm text-[#F1F5F9] hover:bg-[#1E1E2E] rounded-xl flex items-center gap-3">
-                          <Settings className="w-4 h-4 text-[#64748B]" /> Settings
-                        </button>
                       </div>
                       <div className="p-1.5 border-t border-[#1E1E2E] bg-[#0A0A0F]/20">
                         <button
