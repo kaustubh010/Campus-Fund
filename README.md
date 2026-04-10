@@ -490,7 +490,7 @@ This is the core technical innovation of CampusFund. No custom smart contract is
 
 | | | |
 |:---:|:---:|:---:|
-| <img src="https://github.com/identicons/kaustubh.png" width="80" style="border-radius:50%"/> | <img src="https://github.com/identicons/anshul.png" width="80" style="border-radius:50%"/> | <img src="https://github.com/identicons/goldy.png" width="80" style="border-radius:50%"/> |
+| <img src="https://avatars.githubusercontent.com/u/98745930?v=4" width="80" style="border-radius:50%"/> | <img src="https://avatars.githubusercontent.com/u/229663826?v=4" width="80" style="border-radius:50%"/> | <img src="https://avatars.githubusercontent.com/u/237179240?v=4" width="80" style="border-radius:50%"/> |
 | **Kaustubh Bhardwaj** | **Anshul Soni** | **Goldy Choudhary** |
 | Full-Stack & Blockchain | Frontend & Web3 Integration | Backend & Database |
 | Next.js · Algorand · Prisma | React · Pera Wallet · UI/UX | PostgreSQL · API · Auth |
@@ -499,14 +499,6 @@ This is the core technical innovation of CampusFund. No custom smart contract is
 </div>
 
 <br/>
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](./LICENSE) for details.
-
----
 
 <div align="center">
 
