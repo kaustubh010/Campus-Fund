@@ -39,7 +39,9 @@ export async function GET(req: NextRequest) {
 
     // 2. Calculate Stats
     const totalRaisedINR = profile.campaigns.reduce((acc: number, c: any) => acc + c.raisedINR, 0);
-    const activeCampaigns = profile.campaigns.filter((c: any) => c.status === "Active").length;
+    const activeCampaigns = profile.campaigns.filter(
+      (c: any) => String(c.status).toLowerCase() === "active"
+    ).length;
     const totalDonors = new Set(profile.campaigns.flatMap((c: any) => c.donations.map((d: any) => d.donorId))).size;
     const claimedFundsINR = profile.campaigns.filter((c: any) => c.status === "claimed").reduce((acc: number, c: any) => acc + c.raisedINR, 0);
 
@@ -78,7 +80,8 @@ export async function GET(req: NextRequest) {
         raised: c.raisedINR,
         goal: c.goalINR,
         donors: c._count.donations,
-        category: c.category
+        category: c.category,
+        appId: c.appId
       })),
       donations: allDonations,
       transactions: transactions.map((tx: any) => ({

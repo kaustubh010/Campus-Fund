@@ -24,17 +24,40 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const body = await request.json();
-    const { amountINR, amountALGO, txId } = body;
+    const { txId, txIds } = body;
 
-    if (!amountINR || !amountALGO || !txId) {
-      return NextResponse.json({ error: 'Missing donation details' }, { status: 400 });
+    // Use whatever the frontend provided (fallback to just txId if txIds is missing)
+    const transactionIds = Array.isArray(txIds) && txIds.length > 0 ? txIds : (txId ? [txId] : []);
+
+    if (transactionIds.length === 0) {
+      return NextResponse.json({ error: 'Missing transaction id' }, { status: 400 });
+    }
+
+    const { parseDonateGroupFromIndexer } = await import('@/lib/parse-donation-txn');
+
+    // Idempotency check 
+    const existing = await prisma.donation.findFirst({ where: { txId: transactionIds[0] } });
+    if (existing) {
+      return NextResponse.json({ success: true, alreadyRecorded: true }); // Make idempotent
     }
 
     // Verify the txId on the Algorand blockchain here before recording it.
-    const confirmResult = await waitForConfirmation(txId);
+    const confirmResult = await waitForConfirmation(transactionIds[0]);
     if (!confirmResult.success) {
       return NextResponse.json({ error: 'Transaction verification failed' }, { status: 400 });
     }
+
+    const parsed = await parseDonateGroupFromIndexer(transactionIds, campaign.appId);
+    if (!parsed.ok) {
+        return NextResponse.json({error: parsed.error}, {status: 400});
+    }
+
+    const { microAlgos, payerAddress } = parsed.data;
+    const amountALGO = microAlgos / 1_000_000;
+    
+    // Calculate INR from ratio
+    const ratio = campaign.goalALGO > 0 ? campaign.goalINR / campaign.goalALGO : 0;
+    const amountINR = ratio > 0 ? amountALGO * ratio : 0;
 
     const globalState = await getAppGlobalState(campaign.appId);
     if (Number(globalState.claimed || 0) === 1 || Number(globalState.deleted || 0) === 1) {
@@ -52,7 +75,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           donorId: user.id,
           amountINR: Number(amountINR),
           amountALGO: Number(amountALGO),
-          txId
+          txId,
+          donorWalletAddress: payerAddress
         }
       });
 
@@ -87,13 +111,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       }
 
       return updatedCampaign;
+    }, {
+      maxWait: 10000, // 10 seconds (default is 2)
+      timeout: 20000, // 20 seconds (default is 5)
     });
 
     return NextResponse.json({ success: true, donation: true });
   } catch (error) {
     console.error('Error logging donation:', error);
     return NextResponse.json(
-      { error: 'Failed to record donation' },
+      { error: `Failed to record donation: ${error instanceof Error ? error.message : String(error)}` },
       { status: 500 }
     );
   }

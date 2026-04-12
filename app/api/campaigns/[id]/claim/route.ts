@@ -5,13 +5,10 @@ import { cookies } from "next/headers";
 import { waitForConfirmation } from "@/lib/algorand";
 import algosdk from "algosdk";
 import { algodClient, appArgMethod, encodeAddressArg, encodeUintArg, getAppGlobalState } from "@/lib/algorand";
-import { buildRefundPlan } from "@/lib/refunds";
+import { buildRefundPlan, validateDonationsForRefundPlan } from "@/lib/refunds";
 import { toSafeJson } from "@/lib/json";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(lucia.sessionCookieName);
@@ -33,7 +30,7 @@ export async function POST(
     const campaignId = p.id;
     const campaign: any = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      include: { creator: true }
+      include: { creator: true },
     });
 
     if (!campaign) {
@@ -46,6 +43,9 @@ export async function POST(
 
     if (campaign.status === "claimed") {
       return NextResponse.json({ error: "Funds have already been claimed" }, { status: 400 });
+    }
+    if (campaign.status === "cancelled") {
+      return NextResponse.json({ error: "Campaign was cancelled" }, { status: 400 });
     }
 
     if (!campaign.appId) {
@@ -60,9 +60,13 @@ export async function POST(
     const action = payload.action || "prepare";
 
     if (action === "prepare") {
-      if (campaign.invoiceVerificationStatus !== "APPROVED" || !campaign.invoiceAmountMicroALGO) {
+      const invMicro =
+        campaign.invoiceAmountMicroALGO != null
+          ? BigInt(String(campaign.invoiceAmountMicroALGO))
+          : 0n;
+      if (invMicro <= 0n) {
         return NextResponse.json(
-          { error: "Invoice must be approved before claim can be prepared" },
+          { error: "Accept invoice line items and lock totals before claiming." },
           { status: 400 }
         );
       }
@@ -76,22 +80,30 @@ export async function POST(
       const accountInfo = await algodClient.accountInformation(appAddress).do();
       const appBalance = Number(accountInfo.amount || 0);
       const minBalance = Number(accountInfo["min-balance"] || 0);
-      const invoiceAmountMicro = Number(campaign.invoiceAmountMicroALGO);
+      const invoiceAmountMicro = Number(invMicro);
       const distributable = Math.max(0, appBalance - invoiceAmountMicro - minBalance);
 
-      const refundPlan = buildRefundPlan(donations, distributable);
+      const v = validateDonationsForRefundPlan(donations, distributable);
+      if (v) return NextResponse.json({ error: v }, { status: 400 });
+
+      const fullPlan = buildRefundPlan(donations, distributable);
+      const refundPlan = fullPlan.filter((r) => r.microAlgos >= 1);
       const refundSum = refundPlan.reduce((acc, item) => acc + item.microAlgos, 0);
-      if (refundPlan.length > 254) {
+
+      if (refundPlan.length > 7) {
         return NextResponse.json(
-          { error: "Too many donors for one claim call. Batch support is TODO." },
+          { error: "Too many donors for one claim call. Exceeds Algorand 16 ApplicationArgs limit. Batch support is TODO." },
           { status: 400 }
         );
+      }
+      if (refundSum > distributable) {
+        return NextResponse.json({ error: "Refund plan exceeds distributable balance." }, { status: 400 });
       }
 
       const onChain = await getAppGlobalState(campaign.appId);
       if (Number(onChain.invoice_verified || 0) !== 1) {
         return NextResponse.json(
-          { error: "Invoice is approved in DB but not set on-chain yet. Run Verify GST step once." },
+          { error: "Invoice total is not set on-chain yet. Sign the lock-invoice transaction first." },
           { status: 400 }
         );
       }
@@ -116,13 +128,15 @@ export async function POST(
         suggestedParams,
       });
 
-      return NextResponse.json(toSafeJson({
-        claimTxnB64: Buffer.from(claimTxn.toByte()).toString("base64"),
-        invoiceAmountMicro,
-        distributable,
-        refundSum,
-        refunds: refundPlan,
-      }));
+      return NextResponse.json(
+        toSafeJson({
+          claimTxnB64: Buffer.from(claimTxn.toByte()).toString("base64"),
+          invoiceAmountMicro,
+          distributable,
+          refundSum,
+          refunds: refundPlan,
+        })
+      );
     }
 
     if (action === "finalize") {

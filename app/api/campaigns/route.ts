@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const sort = searchParams.get('sort');
 
-    const where: any = {};
+    const where: any = { status: { not: 'cancelled' } };
     if (category && category !== 'All') {
       where.category = { equals: category, mode: 'insensitive' };
     }

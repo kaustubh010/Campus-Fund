@@ -80,7 +80,7 @@ export default function ConnectWalletPage() {
                     <button onClick={() => handleCopy(wallet.address || '')} className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors text-[#64748B] hover:text-[#F1F5F9]">
                       <Copy className="w-4 h-4" />
                     </button>
-                    <a href={`https://testnet.algoexplorer.io/address/${wallet.address}`} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors text-[#64748B] hover:text-[#F1F5F9]">
+                    <a href={`https://testnet.explorer.perawallet.app/address/${wallet.address}`} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors text-[#64748B] hover:text-[#F1F5F9]">
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   </div>
@@ -95,7 +95,7 @@ export default function ConnectWalletPage() {
                 </div>
               </div>
             ) : (
-              <div className="text-center space-y-6 w-full">
+              <div className="text-center space-y-6 w-full flex flex-col items-center justify-center">
                 <div className="flex flex-col items-center justify-center">
                   <p className="text-[#F1F5F9] font-bold text-lg mb-1">Not Connected</p>
                   <p className="text-[#64748B] text-sm mb-6">Install Pera Wallet on your mobile device to connect.</p>

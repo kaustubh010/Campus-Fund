@@ -117,8 +117,8 @@ export const uploadInvoiceAsset = async (
   file: Buffer | string,
   mimeType: string
 ) => {
-  const isImage = mimeType.startsWith("image/");
-  return uploadAsset(file, STORAGE_FOLDERS.INVOICES, isImage ? "image" : "raw");
+  const isImageOrPdf = mimeType.startsWith("image/") || mimeType === "application/pdf";
+  return uploadAsset(file, STORAGE_FOLDERS.INVOICES, isImageOrPdf ? "image" : "raw");
 };
 
 // ✅ Deletion
@@ -128,4 +128,13 @@ export const deleteImage = async (publicId: string): Promise<void> => {
   } catch (error: any) {
     throw new Error(`Cloudinary deletion failed: ${error.message || error}`);
   }
+};
+
+/**
+ * Cloudinary-specific transformation for PDF to first-page JPG.
+ * Standard format: .../upload/v123/folder/file.pdf -> .../upload/pg_1/v123/folder/file.jpg
+ */
+export const getFirstPageImageUrl = (secureUrl: string) => {
+  if (!secureUrl.endsWith(".pdf")) return secureUrl;
+  return secureUrl.replace(/\.pdf$/, ".jpg").replace(/\/upload\//, "/upload/pg_1/");
 };

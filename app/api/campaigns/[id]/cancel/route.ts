@@ -6,8 +6,8 @@ import algosdk from "algosdk";
 import { algodClient, appArgMethod, encodeAddressArg, encodeUintArg, getAppGlobalState, waitForConfirmation } from "@/lib/algorand";
 import { buildRefundPlan, validateDonationsForRefundPlan } from "@/lib/refunds";
 import { toSafeJson } from "@/lib/json";
-import { hardDeleteCampaignRecords } from "@/lib/campaign-delete-db";
 
+/** Creator cancel: same on-chain delete prepare as /delete; finalize soft-updates DB to `cancelled` (no hard purge). */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const sessionId = (await cookies()).get(lucia.sessionCookieName)?.value ?? null;
@@ -23,12 +23,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     if (campaign.creatorId !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (!campaign.appId) return NextResponse.json({ error: "Campaign appId missing" }, { status: 400 });
-    const signerAddress = campaign.creator.walletAddress;
-    if (!signerAddress) return NextResponse.json({ error: "Creator wallet address missing" }, { status: 400 });
-
     const payload = await req.json();
     const action = payload.action || "prepare";
+
+    if (!campaign.appId) {
+      if (action === "prepare") {
+        return NextResponse.json(toSafeJson({ dbOnly: true }));
+      }
+      if (action === "finalize") {
+        const updated = await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { status: "cancelled", deletedAt: new Date() } as any,
+        } as any);
+        return NextResponse.json(toSafeJson(updated));
+      }
+      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    }
+
+    const signerAddress = campaign.creator.walletAddress;
+    if (!signerAddress) return NextResponse.json({ error: "Creator wallet address missing" }, { status: 400 });
 
     if (action === "prepare") {
       const donations = await prisma.donation.findMany({
@@ -47,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const refundSum = refundPlan.reduce((acc, item) => acc + item.microAlgos, 0);
 
       if (refundPlan.length > 7) {
-        return NextResponse.json({ error: "Too many donors for one delete call. Exceeds ApplicationArgs limit." }, { status: 400 });
+        return NextResponse.json({ error: "Too many donors for one cancel call. Exceeds ApplicationArgs limit." }, { status: 400 });
       }
       if (totalRaisedMicro > 0 && refundSum > totalRaisedMicro) {
         return NextResponse.json({ error: "Refund sum exceeds on-chain total raised." }, { status: 400 });
@@ -72,12 +85,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         suggestedParams,
       });
 
-      return NextResponse.json(toSafeJson({
-        deleteTxnB64: Buffer.from(txn.toByte()).toString("base64"),
-        refunds: refundPlan,
-        totalRaisedMicro,
-        refundSumMicro: refundSum,
-      }));
+      return NextResponse.json(
+        toSafeJson({
+          cancelTxnB64: Buffer.from(txn.toByte()).toString("base64"),
+          refunds: refundPlan,
+          totalRaisedMicro,
+          refundSumMicro: refundSum,
+        })
+      );
     }
 
     if (action === "finalize") {
@@ -85,23 +100,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!txId) return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
 
       const confirm = await waitForConfirmation(txId);
-      if (!confirm.success) return NextResponse.json({ error: "Delete tx not confirmed" }, { status: 400 });
+      if (!confirm.success) return NextResponse.json({ error: "Cancel tx not confirmed" }, { status: 400 });
 
       const globalState = await getAppGlobalState(campaign.appId).catch(() => null);
       if (globalState && Number(globalState.deleted || 0) !== 1) {
-        return NextResponse.json({ error: "Delete not reflected on-chain yet" }, { status: 400 });
+        return NextResponse.json({ error: "Cancel not reflected on-chain yet" }, { status: 400 });
       }
 
-      await prisma.$transaction(async (tx) => {
-        await hardDeleteCampaignRecords(tx, campaignId);
-      });
+      const updated = await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          status: "cancelled",
+          deletedAt: new Date(),
+          deleteTxId: txId,
+        } as any,
+      } as any);
 
-      return NextResponse.json(toSafeJson({ success: true, deleteTxId: txId }));
+      return NextResponse.json(toSafeJson(updated));
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error: any) {
-    console.error("Delete campaign error:", error);
+    console.error("Cancel campaign error:", error);
     return NextResponse.json({ error: error.message || "Failed" }, { status: 500 });
   }
 }

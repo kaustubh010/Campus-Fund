@@ -387,6 +387,15 @@ refund_loop:
     <
     bz refund_loop_done
 
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    int 0
+    >
+    bz refund_skip_zero
+
     itxn_begin
     int pay
     itxn_field TypeEnum
@@ -401,6 +410,7 @@ refund_loop:
     itxn_field Amount
     itxn_submit
 
+refund_skip_zero:
     load 1
     int 2
     +
@@ -500,10 +510,12 @@ delete_sum_loop:
     b delete_sum_loop
 
 delete_sum_done:
+    // Sum of refund args (load 0) must be <= total_raised; remainder goes to creator on close.
+    // Stack for <= : A deeper, B top → A <= B → sum <= total_raised
     load 0
     byte "total_raised"
     app_global_get
-    ==
+    <=
     assert
 
     int 1
@@ -514,6 +526,15 @@ delete_refund_loop:
     txn NumAppArgs
     <
     bz delete_refund_done
+
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    int 0
+    >
+    bz delete_refund_skip_zero
 
     itxn_begin
     int pay
@@ -529,6 +550,7 @@ delete_refund_loop:
     itxn_field Amount
     itxn_submit
 
+delete_refund_skip_zero:
     load 1
     int 2
     +

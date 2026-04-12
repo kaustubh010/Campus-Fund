@@ -17,7 +17,7 @@ const ALGORAND_NETWORK = {
 };
 
 // Default to testnet for development
-const ACTIVE_NETWORK = ALGORAND_NETWORK.testnet;
+export const ACTIVE_NETWORK = ALGORAND_NETWORK.testnet;
 
 // Initialize Algorand clients
 export const algodClient = new algosdk.Algodv2(

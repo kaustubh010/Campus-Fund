@@ -37,6 +37,8 @@ export default function CampaignManager() {
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null)
+  const [purgeCampaignId, setPurgeCampaignId] = useState<string | null>(null)
+  const [purgeTitleInput, setPurgeTitleInput] = useState("")
 
   const decodeUnsignedTxn = (b64: string) => {
     const binary = atob(b64)
@@ -47,18 +49,19 @@ export default function CampaignManager() {
     return bytes
   }
 
-  useEffect(() => {
-    const fetchCampaigns = async () => {
-      try {
-        const res = await fetch('/api/company/dashboard')
-        const json = await res.json()
-        if (json.campaigns) setCampaigns(json.campaigns)
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setIsLoading(false)
-      }
+  const fetchCampaigns = async () => {
+    try {
+      const res = await fetch('/api/company/dashboard')
+      const json = await res.json()
+      if (json.campaigns) setCampaigns(json.campaigns)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchCampaigns()
   }, [])
 
@@ -75,70 +78,88 @@ export default function CampaignManager() {
     window.location.href = `/campaigns/${id}`
   }
 
-  const handleDelete = async (id: string) => {
+  /** Soft cancel: refunds on-chain when needed, keeps campaign row as `cancelled`. */
+  const handleSoftCancel = async (id: string) => {
     const camp = campaigns.find(c => c.id === id)
     if (!camp) return
 
     setCampaignToDelete(null)
     setIsProcessing(true)
 
-    if (!camp.appId) {
-      // No smart contract deployed, just delete from DB
-      try {
-        const res = await fetch(`/api/campaigns/${id}`, { method: "DELETE" })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error || "Delete failed")
-
-        toast.success("Campaign removed from dashboard")
-        setCampaigns((prev) => prev.filter((c) => c.id !== id))
-      } catch (err: any) {
-        toast.error(err.message || "Delete failed")
-      } finally {
-        setIsProcessing(false)
-      }
-      return
-    }
-
-    if (!wallet.isConnected) {
-      toast.error('Connect your Pera Wallet to authorize deletion on Algorand.')
-      setIsProcessing(false)
-      return
-    }
-
     try {
-      const prepRes = await fetch(`/api/campaigns/${id}/delete`, {
+      const prepRes = await fetch(`/api/campaigns/${id}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'prepare' })
+        body: JSON.stringify({ action: 'prepare' }),
       })
       const prepared = await prepRes.json()
-      if (!prepRes.ok) throw new Error(prepared.error || 'Failed to prepare cancel txns')
+      if (!prepRes.ok) throw new Error(prepared.error || 'Failed to prepare cancel')
+
+      if (prepared.dbOnly) {
+        const finRes = await fetch(`/api/campaigns/${id}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'finalize' }),
+        })
+        const finData = await finRes.json()
+        if (!finRes.ok) throw new Error(finData.error || 'Finalize failed')
+        toast.success('Campaign cancelled.')
+        setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'cancelled' } : c)))
+        return
+      }
+
+      if (!wallet.isConnected) {
+        toast.error('Connect your Pera Wallet to refund donors and remove the on-chain app.')
+        return
+      }
 
       toast.info('Please sign cancellation transaction', { autoClose: false, toastId: 'del-toast' })
-      
-      const bytes = decodeUnsignedTxn(prepared.deleteTxnB64)
+
+      const bytes = decodeUnsignedTxn(prepared.cancelTxnB64)
       const sig = await signTransaction(bytes, wallet.address!)
       if (!sig.success || !sig.signedTransaction) throw new Error(sig.error || 'Signing failed')
       const signedDel = Array.isArray(sig.signedTransaction) ? sig.signedTransaction[0] : sig.signedTransaction
 
       const { txId } = await algodClient.sendRawTransaction(signedDel).do()
       await waitForConfirmation(txId)
-      
-      toast.update('del-toast', { render: 'Finalizing deletion...', type: 'info' })
-      const finRes = await fetch(`/api/campaigns/${id}/delete`, {
+
+      toast.update('del-toast', { render: 'Saving…', type: 'info' })
+      const finRes = await fetch(`/api/campaigns/${id}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'finalize', txId })
+        body: JSON.stringify({ action: 'finalize', txId }),
       })
       const finData = await finRes.json()
       if (!finRes.ok) throw new Error(finData.error)
 
       toast.dismiss('del-toast')
-      toast.success('Campaign deleted and refunds triggered!')
-      setCampaigns((prev) => prev.filter((c) => c.id !== id))
+      toast.success('Campaign cancelled; donors refunded on-chain.')
+      setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'cancelled' } : c)))
     } catch (err: any) {
       toast.dismiss('del-toast')
       toast.error(err.message || 'Cancel failed')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handlePurgeSubmit = async () => {
+    if (!purgeCampaignId) return
+    setIsProcessing(true)
+    try {
+      const res = await fetch(`/api/campaigns/${purgeCampaignId}/purge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmTitle: purgeTitleInput.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Purge failed')
+      toast.success('Campaign permanently removed from the database.')
+      setCampaigns((prev) => prev.filter((c) => c.id !== purgeCampaignId))
+      setPurgeCampaignId(null)
+      setPurgeTitleInput('')
+    } catch (err: any) {
+      toast.error(err.message || 'Purge failed')
     } finally {
       setIsProcessing(false)
     }
@@ -223,8 +244,10 @@ export default function CampaignManager() {
                           ? "bg-[#6EE7B7]/10 text-[#6EE7B7]" 
                           : camp.status.toLowerCase() === "funded"
                           ? "bg-[#10B981]/10 text-[#10B981]"
-                          : camp.status.toLowerCase() === "claimed"
+                          :                         camp.status.toLowerCase() === "claimed"
                           ? "bg-[#818CF8]/10 text-[#818CF8]"
+                          : camp.status.toLowerCase() === "cancelled"
+                          ? "bg-[#64748B]/20 text-[#94A3B8]"
                           : "bg-red-500/10 text-red-500"
                       }`}>
                         {camp.status}
@@ -261,11 +284,22 @@ export default function CampaignManager() {
                         <Link href={`/campaigns/${camp.id}/edit`} className="bg-[#818CF8]/10 text-[#818CF8] text-[10px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1">
                           <Pencil className="w-3 h-3" /> Edit
                         </Link>
+                        {camp.status.toLowerCase() !== 'cancelled' && (
+                          <button
+                            onClick={() => setCampaignToDelete(camp.id)}
+                            className="bg-amber-500/10 text-amber-400 text-[10px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1"
+                          >
+                            End
+                          </button>
+                        )}
                         <button
-                          onClick={() => setCampaignToDelete(camp.id)}
+                          onClick={() => {
+                            setPurgeCampaignId(camp.id)
+                            setPurgeTitleInput('')
+                          }}
                           className="bg-red-500/10 text-red-500 text-[10px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1"
                         >
-                          <Trash2 className="w-3 h-3" /> Delete
+                          <Trash2 className="w-3 h-3" /> Purge
                         </button>
                       </div>
                     </td>
@@ -280,22 +314,49 @@ export default function CampaignManager() {
       <AlertDialog open={!!campaignToDelete} onOpenChange={(open) => !open && setCampaignToDelete(null)}>
         <AlertDialogContent className="bg-[#111118] border-[#1E1E2E] text-[#F1F5F9]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>Cancel this campaign?</AlertDialogTitle>
             <AlertDialogDescription className="text-[#64748B]">
-              This action cannot be undone. This will permanently archive this campaign,
-              stop all future deposits, and unlock any accumulated funds for donor refund.
+              Refunds donors on-chain when the escrow holds ALGO. The campaign remains visible as cancelled. Use Purge only to remove it from the database.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-[#1E1E2E] border-none text-[#F1F5F9] hover:bg-[#2d3d2b] hover:text-[#F1F5F9]">
-              Cancel
+              Back
             </AlertDialogCancel>
             <AlertDialogAction 
-              onClick={() => campaignToDelete && handleDelete(campaignToDelete)} 
-              className="bg-red-500 hover:bg-red-600 text-white font-bold"
+              onClick={() => campaignToDelete && handleSoftCancel(campaignToDelete)} 
+              className="bg-amber-600 hover:bg-amber-500 text-[#0A0A0F] font-bold"
               disabled={isProcessing}
             >
-              {isProcessing ? 'Processing...' : 'Yes, delete campaign'}
+              {isProcessing ? 'Processing...' : 'Yes, cancel campaign'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!purgeCampaignId} onOpenChange={(open) => { if (!open) { setPurgeCampaignId(null); setPurgeTitleInput('') } }}>
+        <AlertDialogContent className="bg-[#111118] border-[#1E1E2E] text-[#F1F5F9]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Purge from database</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#64748B] space-y-2">
+              <span className="block">This permanently deletes the campaign and related records. Blocked if funds remain on-chain (cancel first).</span>
+              <span className="block text-amber-200/90 text-xs">Type the exact campaign title to confirm.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <input
+            value={purgeTitleInput}
+            onChange={(e) => setPurgeTitleInput(e.target.value)}
+            className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2 text-sm text-[#F1F5F9] mb-4"
+            placeholder="Campaign title"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-[#1E1E2E] border-none text-[#F1F5F9]">Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handlePurgeSubmit}
+              className="bg-red-600 hover:bg-red-500 text-white font-bold"
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Purging…' : 'Purge forever'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

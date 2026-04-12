@@ -34,8 +34,7 @@ export default function CampaignDetailPage() {
   const [donateAmount, setDonateAmount] = useState('')
   const [processing, setProcessing] = useState(false)
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
-  const [gstNumber, setGstNumber] = useState('')
-  const [invoiceAmountINR, setInvoiceAmountINR] = useState('')
+  const [invoiceEdits, setInvoiceEdits] = useState<Record<string, string>>({})
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
 
   const fetchCampaign = async () => {
@@ -127,6 +126,7 @@ export default function CampaignDetailPage() {
         combinedSignedTxns = signedResult;
       }
 
+      const txIds = txnGroup.map(t => t.txID().toString());
       const { txId } = await algodClient.sendRawTransaction(combinedSignedTxns).do()
 
       const confirmResult = await waitForConfirmation(txId)
@@ -139,14 +139,13 @@ export default function CampaignDetailPage() {
       const res = await fetch(`/api/campaigns/${campaignId}/donate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amountINR: amountInr,
-          amountALGO: amountAlgo,
-          txId: txId
-        })
+        body: JSON.stringify({ txId, txIds }),
       })
 
-      if (!res.ok) throw new Error('Transaction failed to sync with backend')
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new Error(errBody.error || 'Transaction failed to sync with backend')
+      }
       
       toast.success('Donation successful! Thank you.')
       setDonateAmount('')
@@ -177,25 +176,20 @@ export default function CampaignDetailPage() {
       toast.error('Select an invoice file first')
       return
     }
-    if (!invoiceAmountINR || Number(invoiceAmountINR) <= 0) {
-      toast.error('Enter valid invoice amount (INR)')
-      return
-    }
 
     setProcessing(true)
     try {
       const formData = new FormData()
       formData.append('invoice', invoiceFile)
-      formData.append('gstNumber', gstNumber)
-      formData.append('invoiceAmountINR', invoiceAmountINR)
 
-      const res = await fetch(`/api/campaigns/${campaignId}/invoice/upload`, {
+      const res = await fetch(`/api/campaigns/${campaignId}/invoices`, {
         method: 'POST',
         body: formData,
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Invoice upload failed')
-      toast.success('Invoice uploaded. Please verify GST now.')
+      toast.success('Invoice uploaded. Review OCR amount, accept each line, then lock on-chain.')
+      setInvoiceFile(null)
       await fetchCampaign()
     } catch (err: any) {
       toast.error(err.message || 'Invoice upload failed')
@@ -204,26 +198,38 @@ export default function CampaignDetailPage() {
     }
   }
 
+  const patchInvoice = async (invoiceId: string, body: Record<string, unknown>) => {
+    const res = await fetch(`/api/campaigns/${campaignId}/invoices/${invoiceId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Update failed')
+    await fetchCampaign()
+  }
+
   const handleVerifyInvoice = async () => {
+    if (!wallet.isConnected) {
+      toast.error('Connect your Pera Wallet to lock the invoice total on-chain')
+      return
+    }
     setProcessing(true)
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/invoice/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gstNumber,
-          invoiceAmountINR: Number(invoiceAmountINR),
-        }),
+        body: JSON.stringify({}),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || data.reason || 'GST verification failed')
+      if (!res.ok) throw new Error(data.error || data.reason || 'Could not prepare invoice lock')
 
       if (data.setInvoiceTxnB64) {
-        toast.info('Please sign on-chain invoice verification in Pera', { autoClose: false, toastId: 'verify-toast' })
+        toast.info('Please sign on-chain invoice lock in Pera', { autoClose: false, toastId: 'verify-toast' })
         const setInvoiceBytes = decodeUnsignedTxn(data.setInvoiceTxnB64)
         const setInvoiceSign = await signTransaction(setInvoiceBytes, wallet.address!)
         if (!setInvoiceSign.success || !setInvoiceSign.signedTransaction) {
-          throw new Error(setInvoiceSign.error || 'Failed to sign invoice verification transaction')
+          throw new Error(setInvoiceSign.error || 'Failed to sign invoice lock transaction')
         }
         const signedSet = Array.isArray(setInvoiceSign.signedTransaction)
           ? setInvoiceSign.signedTransaction[0]
@@ -233,7 +239,7 @@ export default function CampaignDetailPage() {
         toast.dismiss('verify-toast')
       }
 
-      toast.success('GST verified and invoice approved on-chain')
+      toast.success('Invoice total locked on-chain')
       await fetchCampaign()
     } catch (err: any) {
       toast.dismiss('verify-toast')
@@ -292,62 +298,57 @@ export default function CampaignDetailPage() {
   const handleCancel = async () => {
     setCancelDialogOpen(false)
 
-    if (!campaign.appId) {
-      // No smart contract deployed, just delete from DB
-      setProcessing(true)
-      try {
-        const res = await fetch(`/api/campaigns/${campaignId}`, { method: 'DELETE' })
-        if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Failed to delete campaign')
-        }
-        toast.success('Campaign deleted permanently.')
-        window.location.href = '/dashboard/company/campaigns'
-      } catch (err: any) {
-        toast.error(err.message || 'Delete failed')
-      } finally {
-        setProcessing(false)
-      }
-      return
-    }
-
-    if (!wallet.isConnected) {
-      toast.error('Connect your Pera Wallet to authorize deletion on Algorand.')
-      return
-    }
-
     setProcessing(true)
     try {
-      // 1. Prepare
-      const prepRes = await fetch(`/api/campaigns/${campaignId}/delete`, {
+      const prepRes = await fetch(`/api/campaigns/${campaignId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'prepare' })
+        body: JSON.stringify({ action: 'prepare' }),
       })
       const prepared = await prepRes.json()
-      if (!prepRes.ok) throw new Error(prepared.error || 'Failed to prepare cancel txns')
+      if (!prepRes.ok) throw new Error(prepared.error || 'Failed to prepare cancel')
+
+      if (prepared.dbOnly) {
+        const finRes = await fetch(`/api/campaigns/${campaignId}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'finalize' }),
+        })
+        if (!finRes.ok) {
+          const e = await finRes.json().catch(() => ({}))
+          throw new Error(e.error || 'Finalize failed')
+        }
+        toast.success('Campaign cancelled.')
+        window.location.href = '/dashboard/company/campaigns'
+        return
+      }
+
+      if (!wallet.isConnected) {
+        toast.error('Connect your Pera Wallet to refund donors and remove the on-chain app.')
+        return
+      }
 
       toast.info('Please sign cancellation transaction', { autoClose: false, toastId: 'del-toast' })
-      
-      const bytes = decodeUnsignedTxn(prepared.deleteTxnB64)
+
+      const bytes = decodeUnsignedTxn(prepared.cancelTxnB64)
       const sig = await signTransaction(bytes, wallet.address!)
       if (!sig.success || !sig.signedTransaction) throw new Error(sig.error || 'Signing failed')
       const signedDel = Array.isArray(sig.signedTransaction) ? sig.signedTransaction[0] : sig.signedTransaction
 
       const { txId } = await algodClient.sendRawTransaction(signedDel).do()
       await waitForConfirmation(txId)
-      
-      toast.update('del-toast', { render: 'Finalizing deletion...', type: 'info' })
-      const finRes = await fetch(`/api/campaigns/${campaignId}/delete`, {
+
+      toast.update('del-toast', { render: 'Saving cancellation…', type: 'info' })
+      const finRes = await fetch(`/api/campaigns/${campaignId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'finalize', txId })
+        body: JSON.stringify({ action: 'finalize', txId }),
       })
       const finData = await finRes.json()
       if (!finRes.ok) throw new Error(finData.error)
 
       toast.dismiss('del-toast')
-      toast.success('Campaign deleted and refunds triggered!')
+      toast.success('Refunds sent on-chain. Campaign marked cancelled.')
       window.location.href = '/dashboard/company/campaigns'
     } catch (err: any) {
       toast.dismiss('del-toast')
@@ -368,8 +369,11 @@ export default function CampaignDetailPage() {
   const percent = (campaign.raisedALGO / campaign.goalALGO) * 100 || 0
   const isCreator = user?.id === campaign.creatorId
   const goalMet = campaign.raisedALGO >= campaign.goalALGO
-  const isCancelled = campaign.appGlobalState?.is_cancelled === 1; // We should fetch this or rely on status
-  const canClaim = isCreator && goalMet && campaign.status !== 'claimed' && !isCancelled
+  const deadlinePassed = campaign.deadline && new Date(campaign.deadline).getTime() < Date.now()
+  const isCancelled =
+    campaign.status === 'cancelled' || Number(campaign.appGlobalState?.deleted ?? 0) === 1
+  const canClaim =
+    isCreator && goalMet && campaign.status !== 'claimed' && campaign.status !== 'cancelled' && !isCancelled
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] pt-24 pb-20">
@@ -422,15 +426,72 @@ export default function CampaignDetailPage() {
                   <div className="w-8 h-8 bg-[#1E1E2E] rounded-full flex items-center justify-center text-[#F1F5F9] font-bold">
                     {campaign.creator.name?.[0].toUpperCase()}
                   </div>
-                  <span className="font-medium text-[#F1F5F9]">{campaign.creator.name}</span>
+                  <span className="font-medium text-[#F1F5F9]">
+                    {campaign.creator.name} 
+                    {campaign.company && (
+                      <span className="text-[#64748B] ml-2 font-normal">
+                        ({campaign.company.orgName})
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <span>•</span>
                 <span>{new Date(campaign.createdAt).toLocaleDateString()}</span>
               </div>
 
+              {campaign.company && (
+                <div className="flex items-start gap-4 mb-8 bg-[#1E1E2E]/30 p-5 rounded-2xl border border-[#1E1E2E]">
+                  <div className="flex-1">
+                    <h4 className="font-bold text-[#F1F5F9] mb-1 font-[Syne]">{campaign.company.orgName}</h4>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-[#64748B]">
+                      {campaign.company.orgType && (
+                         <span className="flex items-center gap-1">
+                           <ShieldCheck className="w-4 h-4 text-[#6EE7B7] opacity-70" />
+                           {campaign.company.orgType}
+                         </span>
+                      )}
+                      {campaign.company.university && (
+                         <span className="flex items-center gap-1">
+                           <Users className="w-4 h-4 opacity-70" />
+                           {campaign.company.university}
+                         </span>
+                      )}
+                      {campaign.company.contactPerson && (
+                         <span className="flex items-center gap-1">
+                           <span>Contact: {campaign.company.contactPerson}</span>
+                         </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="prose prose-invert max-w-none text-[#F1F5F9]/80 font-[DM_Sans] leading-relaxed">
                 <p className="whitespace-pre-wrap">{campaign.description}</p>
               </div>
+
+              {Array.isArray(campaign.invoices) && campaign.invoices.length > 0 && (
+                <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-6 mt-8">
+                  <h3 className="text-lg font-bold font-[Syne] text-[#F1F5F9] mb-3 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-[#6EE7B7]" /> Invoices (transparency)
+                  </h3>
+                  <ul className="space-y-3">
+                    {campaign.invoices.map((inv: any) => (
+                      <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border border-[#1E1E2E] rounded-xl p-3 bg-[#0A0A0F]">
+                        <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[#6EE7B7] hover:underline font-mono text-xs truncate max-w-[60%]">
+                          View document
+                        </a>
+                        {inv.status === 'ACCEPTED' && inv.extractedAmountINR != null && (
+                          <span className="text-[#F1F5F9] font-bold">₹{Number(inv.extractedAmountINR).toLocaleString()} accepted</span>
+                        )}
+                        {inv.status === 'PENDING_REVIEW' && isCreator && (
+                          <span className="text-[#64748B] text-xs">Pending your review</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Escrow Transparency Panel */}
@@ -534,54 +595,116 @@ export default function CampaignDetailPage() {
                     <div className="space-y-4">
                       <div className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-2xl p-4 space-y-3">
                         <h4 className="font-bold text-[#F1F5F9] flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-[#6EE7B7]" /> Invoice & GST Verification
+                          <FileText className="w-4 h-4 text-[#6EE7B7]" /> Invoices (OCR + review)
                         </h4>
                         <label className="w-full relative flex flex-col items-center justify-center p-6 border-2 border-dashed border-[#1E1E2E] hover:border-[#6EE7B7]/50 rounded-xl bg-[#111118] cursor-pointer transition-colors group">
                           <UploadCloud className="w-6 h-6 text-[#64748B] group-hover:text-[#6EE7B7] mb-2 transition-colors" />
                           <span className="text-xs text-[#F1F5F9] text-center font-bold">
-                            {invoiceFile ? invoiceFile.name : 'Drop Invoice Here or Click'}
+                            {invoiceFile ? invoiceFile.name : 'Add PDF / image'}
                           </span>
-                          <span className="text-[10px] text-[#64748B] mt-1">PDF, JPG, PNG (Max 5MB)</span>
+                          <span className="text-[10px] text-[#64748B] mt-1">PDF, JPG, PNG — amount extracted by AI; edit before accept</span>
                           <input
                             type="file"
                             accept=".pdf,image/png,image/jpeg,image/webp"
                             onChange={(e) => setInvoiceFile(e.target.files?.[0] || null)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer hidden"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             id="invoice-upload"
                           />
                         </label>
-                        <input
-                          type="text"
-                          value={gstNumber}
-                          onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
-                          placeholder="GST Number"
-                          className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F1F5F9]"
-                        />
-                        <input
-                          type="number"
-                          value={invoiceAmountINR}
-                          onChange={(e) => setInvoiceAmountINR(e.target.value)}
-                          placeholder="Invoice Amount (INR)"
-                          className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F1F5F9]"
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={handleInvoiceUpload}
-                            disabled={processing}
-                            className="w-full py-2 bg-[#1E1E2E] text-[#F1F5F9] rounded-xl text-xs font-bold"
-                          >
-                            Upload Invoice
-                          </button>
-                          <button
-                            onClick={handleVerifyInvoice}
-                            disabled={processing}
-                            className="w-full py-2 bg-[#6EE7B7]/20 text-[#6EE7B7] border border-[#6EE7B7]/30 rounded-xl text-xs font-bold"
-                          >
-                            Verify GST
-                          </button>
+                        <button
+                          type="button"
+                          onClick={handleInvoiceUpload}
+                          disabled={processing || !invoiceFile}
+                          className="w-full py-2 bg-[#1E1E2E] text-[#F1F5F9] rounded-xl text-xs font-bold"
+                        >
+                          Upload
+                        </button>
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {(campaign.invoices || []).map((inv: any) => (
+                            <div key={inv.id} className="border border-[#1E1E2E] rounded-lg p-2 text-xs space-y-1">
+                              <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[#6EE7B7] block truncate">
+                                Open file
+                              </a>
+                              <div className="flex gap-1 items-center">
+                                <span className="text-[#64748B]">₹</span>
+                                <input
+                                  className="flex-1 bg-[#111118] border border-[#1E1E2E] rounded px-2 py-1 text-[#F1F5F9]"
+                                  value={
+                                    invoiceEdits[inv.id] ??
+                                    (inv.extractedAmountINR != null ? String(inv.extractedAmountINR) : '')
+                                  }
+                                  onChange={(e) =>
+                                    setInvoiceEdits((m) => ({ ...m, [inv.id]: e.target.value }))
+                                  }
+                                  placeholder="INR total"
+                                />
+                              </div>
+                              <div className="flex gap-1 flex-wrap">
+                                <button
+                                  type="button"
+                                  disabled={processing}
+                                  className="px-2 py-1 bg-[#6EE7B7]/20 text-[#6EE7B7] rounded"
+                                  onClick={async () => {
+                                    const raw = invoiceEdits[inv.id] ?? inv.extractedAmountINR
+                                    const n = Number(raw)
+                                    if (!Number.isFinite(n) || n <= 0) {
+                                      toast.error('Enter a valid INR amount')
+                                      return
+                                    }
+                                    try {
+                                      await patchInvoice(inv.id, { extractedAmountINR: n })
+                                      toast.success('Amount saved')
+                                    } catch (e: any) {
+                                      toast.error(e.message)
+                                    }
+                                  }}
+                                >
+                                  Save INR
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={processing || inv.status === 'ACCEPTED'}
+                                  className="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded"
+                                  onClick={async () => {
+                                    try {
+                                      await patchInvoice(inv.id, { status: 'ACCEPTED' })
+                                      toast.success('Accepted for claim total')
+                                    } catch (e: any) {
+                                      toast.error(e.message)
+                                    }
+                                  }}
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={processing}
+                                  className="px-2 py-1 bg-red-500/10 text-red-400 rounded"
+                                  onClick={async () => {
+                                    try {
+                                      await patchInvoice(inv.id, { status: 'REJECTED' })
+                                    } catch (e: any) {
+                                      toast.error(e.message)
+                                    }
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                              <span className="text-[#64748B]">{inv.status}</span>
+                            </div>
+                          ))}
                         </div>
+                        <button
+                          onClick={handleVerifyInvoice}
+                          disabled={processing}
+                          className="w-full py-2 bg-[#6EE7B7]/20 text-[#6EE7B7] border border-[#6EE7B7]/30 rounded-xl text-xs font-bold"
+                        >
+                          Lock invoice total on-chain
+                        </button>
                         <p className="text-[11px] text-[#64748B]">
-                          Status: {campaign.invoiceVerificationStatus || 'NOT_SUBMITTED'}
+                          Totals: ₹{campaign.invoiceAmountINR ?? '—'} · Status:{' '}
+                          {campaign.invoiceVerificationStatus || 'NOT_SUBMITTED'}
                         </p>
                       </div>
                       <div className="bg-gradient-to-br from-[#6EE7B7]/20 to-[#818CF8]/20 border border-[#6EE7B7]/50 p-5 rounded-2xl relative overflow-hidden group">
@@ -624,8 +747,19 @@ export default function CampaignDetailPage() {
                 </div>
               ) : (
                 <div className="pt-6 border-t border-[#1E1E2E]">
-                  {(campaign.status === 'active') ? (
+                  {(!['cancelled', 'claimed'].includes(campaign.status) && !deadlinePassed) ? (
                     <>
+                      {goalMet && (
+                         <div className="bg-gradient-to-br from-[#6EE7B7]/10 to-[#818CF8]/10 border border-[#6EE7B7]/30 p-4 rounded-2xl mb-6 relative overflow-hidden text-center">
+                           <div className="absolute top-0 right-0 w-12 h-12 bg-[#6EE7B7]/5 rounded-full blur-xl" />
+                           <h4 className="text-[#6EE7B7] text-xs font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                             <CheckCircle2 className="w-3 h-3" /> Goal Met
+                           </h4>
+                           <p className="text-[#F1F5F9] text-sm font-bold leading-tight">
+                             Target reached! Still accepting contributions until the deadline.
+                           </p>
+                         </div>
+                      )}
                       <div className="relative mb-4">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-[#F1F5F9] text-lg">₹</span>
                         <input 
@@ -642,6 +776,9 @@ export default function CampaignDetailPage() {
                           ≈ {((Number(donateAmount) || 0) / ALGO_RATE).toFixed(2)} ALGO
                         </span>
                       </div>
+                      <p className="text-[10px] text-[#64748B] mb-3 leading-relaxed">
+                        Refunds return to the same Pera address you pay from. Set your profile wallet to that address before donating.
+                      </p>
                       <button 
                         onClick={handleDonate}
                         disabled={processing || !donateAmount}
@@ -693,8 +830,7 @@ export default function CampaignDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription className="text-[#64748B]">
-              This action cannot be undone. This will permanently archive this campaign,
-              stop all future deposits, and unlock any accumulated funds for donor refund.
+              Donors will be refunded on-chain (same wallet they paid from). The campaign will stay visible as cancelled for transparency. Use the dashboard &quot;Purge&quot; only if you need it removed from the database entirely.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -702,7 +838,7 @@ export default function CampaignDetailPage() {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleCancel} className="bg-red-500 hover:bg-red-600 text-white font-bold">
-              Yes, delete campaign
+              Yes, cancel campaign
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

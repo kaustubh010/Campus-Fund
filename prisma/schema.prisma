@@ -22,6 +22,12 @@ enum InvoiceVerificationStatus {
   REJECTED
 }
 
+enum CampaignInvoiceStatus {
+  PENDING_REVIEW
+  ACCEPTED
+  REJECTED
+}
+
 model User {
   id             String    @id
   googleId       String?   @unique @map("google_id")
@@ -30,6 +36,7 @@ model User {
   hashedPassword String    @map("hashed_password")
   name           String?   @map("full_name")
   picture        String?   @map("profile_picture")
+  plan           String    @default("free")
   role           Role      @default(USER)
   walletAddress  String?
   createdAt      DateTime  @default(now()) @map("created_at")
@@ -103,7 +110,7 @@ model Campaign {
   deadline                  DateTime?
   escrowAddress             String
   escrowMnemonic            String                    @map("escrow_mnemonic")
-  status                    String                    @default("active") // active | funded | claimed | expired
+  status                    String                    @default("active") // active | funded | claimed | cancelled | expired
   creatorId                 String
   creator                   User                      @relation(fields: [creatorId], references: [id])
   companyProfileId          String?
@@ -127,8 +134,28 @@ model Campaign {
   donations                 Donation[]
   transactions              Transaction[]
   invoiceRefunds            InvoiceRefund[]
+  invoices                  CampaignInvoice[]
   notifications             Notification[]
   createdAt                 DateTime                  @default(now())
+}
+
+model CampaignInvoice {
+  id                  String                @id @default(cuid())
+  campaignId          String
+  campaign            Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  fileUrl             String
+  publicId            String?
+  mimeType            String?
+  extractedAmountINR  Float?
+  extractedAmountALGO Float?
+  extractedMicroAlgos BigInt?
+  ocrRawText          String?               @db.Text
+  status              CampaignInvoiceStatus @default(PENDING_REVIEW)
+  creatorConfirmedAt  DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([campaignId])
 }
 
 model CompanyProfile {

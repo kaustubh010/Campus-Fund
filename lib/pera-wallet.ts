@@ -44,10 +44,16 @@ export async function signTransaction(
   try {
     let txns: Uint8Array[];
     
-    if (Array.isArray(txnBytes) && txnBytes.length > 0 && txnBytes[0] instanceof Uint8Array) {
-      txns = txnBytes as Uint8Array[];
+    if (Array.isArray(txnBytes)) {
+      if (txnBytes.length > 0 && txnBytes[0] instanceof Uint8Array) {
+        txns = txnBytes as Uint8Array[];
+      } else {
+        txns = [new Uint8Array(txnBytes as number[])];
+      }
+    } else if (txnBytes instanceof Uint8Array) {
+      txns = [txnBytes];
     } else {
-      txns = [new Uint8Array(txnBytes as number[])];
+      txns = [new Uint8Array(txnBytes as unknown as number[])];
     }
 
     const txGroups = txns.map(t => ({

@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       setUser(data.user);
 
-      router.push("/");
+      router.push("/connect-wallet");
     } catch (error: any) {
       throw error;
     } finally {
@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       setUser(data.user);
 
-      router.push("/");
+      router.push("/connect-wallet");
     } catch (error: any) {
       throw error;
     } finally {
