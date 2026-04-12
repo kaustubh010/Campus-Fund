@@ -97,11 +97,18 @@ export default function TransactionsPage() {
                     <tr key={tx.id} className="hover:bg-[#1E1E2E]/50 transition-colors">
                       <td className="p-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ${
-                          tx.type === 'Donation' ? 'bg-[#EF4444]/10 text-[#EF4444]' : 'bg-[#6EE7B7]/10 text-[#6EE7B7]'
+                          tx.type === 'Donation' ? 'bg-[#EF4444]/10 text-[#EF4444]' : 
+                          tx.type === 'Refund' ? 'bg-yellow-500/10 text-yellow-500' : 
+                          'bg-[#6EE7B7]/10 text-[#6EE7B7]'
                         }`}>
                           {tx.type === 'Donation' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownLeft className="w-3 h-3" />}
                           {tx.type}
                         </span>
+                        {tx.type === 'Donation' && tx.campaign?.status === 'cancelled' && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border border-yellow-500/30 text-yellow-500 line-through decoration-yellow-500/50">
+                            CANCELED
+                          </span>
+                        )}
                       </td>
                       <td className="p-4 text-[#F1F5F9] font-medium text-sm">
                         {tx.campaign?.title || 'Unknown Campaign'}

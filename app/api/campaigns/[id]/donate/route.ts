@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { lucia } from '@/lib/auth';
 import { cookies } from 'next/headers';
-import { waitForConfirmation } from '@/lib/algorand';
+import { getAppGlobalState, waitForConfirmation } from '@/lib/algorand';
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -18,6 +18,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const p = await params;
     const campaignId = p.id;
+    const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+    if (!campaign || !campaign.appId) {
+      return NextResponse.json({ error: 'Campaign/app not found' }, { status: 404 });
+    }
 
     const body = await request.json();
     const { amountINR, amountALGO, txId } = body;
@@ -30,6 +34,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const confirmResult = await waitForConfirmation(txId);
     if (!confirmResult.success) {
       return NextResponse.json({ error: 'Transaction verification failed' }, { status: 400 });
+    }
+
+    const globalState = await getAppGlobalState(campaign.appId);
+    if (Number(globalState.claimed || 0) === 1 || Number(globalState.deleted || 0) === 1) {
+      return NextResponse.json({ error: 'Campaign no longer accepts donations' }, { status: 400 });
+    }
+    if (Number(globalState.deadline || 0) < Math.floor(Date.now() / 1000)) {
+      return NextResponse.json({ error: 'Campaign deadline has passed' }, { status: 400 });
     }
 
     const mutation = await prisma.$transaction(async (tx) => {

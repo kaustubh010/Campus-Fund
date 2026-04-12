@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 
 import { getAlgoRate } from '@/lib/coingecko';
 import { algoToMicroAlgo } from '@/lib/algorand';
+import { toSafeJson } from '@/lib/json';
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
       orderBy,
     });
 
-    return NextResponse.json({ campaigns });
+    return NextResponse.json(toSafeJson({ campaigns }));
   } catch (error) {
     console.error('Error fetching campaigns:', error);
     return NextResponse.json(
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     const { escrowMnemonic: _omit, ...safeCampaign } = campaign;
 
-    return NextResponse.json({ campaign: safeCampaign }, { status: 201 });
+    return NextResponse.json(toSafeJson({ campaign: safeCampaign }), { status: 201 });
   } catch (error) {
     console.error('Error creating campaign:', error);
     return NextResponse.json(

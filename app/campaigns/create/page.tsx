@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { WalletChip } from '@/components/wallet-chip'
 import { useWallet } from '@/context/wallet-context'
-import { ArrowRight, ArrowLeft, CheckCircle2, Sparkles, Building2 } from 'lucide-react'
+import { ArrowRight, ArrowLeft, CheckCircle2, Sparkles, Building2, UploadCloud } from 'lucide-react'
 import { toast } from 'react-toastify'
 import { useAuth } from '@/hooks/useAuth'
 import { useAlgoRate } from '@/hooks/useAlgoRate'
@@ -61,6 +61,28 @@ export default function CreateCampaignPage() {
   const [coverImage, setCoverImage] = useState('')
   const [goalINR, setGoalINR] = useState('')
   const [deadline, setDeadline] = useState('')
+  const [uploadingCover, setUploadingCover] = useState(false)
+
+  const handleCoverUpload = async (file: File | null) => {
+    if (!file) return
+    setUploadingCover(true)
+    try {
+      const formData = new FormData()
+      formData.append('cover', file)
+      const res = await fetch('/api/campaigns/upload-cover', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Cover upload failed')
+      setCoverImage(data.url)
+      toast.success('Cover image uploaded')
+    } catch (err: any) {
+      toast.error(err.message || 'Upload failed')
+    } finally {
+      setUploadingCover(false)
+    }
+  }
 
   const handleNext = () => {
     if (step === 1) {
@@ -105,22 +127,21 @@ export default function CreateCampaignPage() {
         algosdk.encodeUint64(deadlineTs)
       ]
 
-      const txn = algosdk.makeApplicationCreateTxnFromObject({
+      const createTxn = algosdk.makeApplicationCreateTxnFromObject({
         from: wallet.address!,
         suggestedParams,
         onComplete: algosdk.OnApplicationComplete.NoOpOC,
         approvalProgram,
         clearProgram,
-        numGlobalInts: 5,
+        numGlobalInts: 7,
         numGlobalByteSlices: 1,
-        numLocalInts: 1,
+        numLocalInts: 0,
         numLocalByteSlices: 0,
         appArgs,
       })
 
-      // 3. Sign and Send Deployment
       toast.info('Deploying Smart Contract. Please sign in Pera Wallet...', { autoClose: 5000 })
-      const signResult = await signTransaction(txn.toByte(), wallet.address!)
+      const signResult = await signTransaction(createTxn.toByte(), wallet.address!)
       if (!signResult.success || !signResult.signedTransaction) {
         throw new Error(signResult.error || 'Failed to sign deployment')
       }
@@ -135,18 +156,18 @@ export default function CreateCampaignPage() {
       const appId = confirmResult.confirmation!['application-index']
       const escrowAddress = algosdk.getApplicationAddress(appId)
 
-      // 4. Initial Funding (0.2 ALGO for MBR and Fees)
-      toast.info('Funding smart contract for security...', { autoClose: 3000 })
+      // 4. Fund app escrow minimum balance (0.1 ALGO)
       const fundTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
         from: wallet.address!,
         to: escrowAddress,
-        amount: 200000, // 0.2 ALGO
+        amount: 100000,
         suggestedParams,
       })
-
       const fundSignResult = await signTransaction(fundTxn.toByte(), wallet.address!)
       if (fundSignResult.success && fundSignResult.signedTransaction) {
-        const signedFundTxn = Array.isArray(fundSignResult.signedTransaction) ? fundSignResult.signedTransaction[0] : fundSignResult.signedTransaction;
+        const signedFundTxn = Array.isArray(fundSignResult.signedTransaction)
+          ? fundSignResult.signedTransaction[0]
+          : fundSignResult.signedTransaction
         await algodClient.sendRawTransaction(signedFundTxn).do()
         await waitForConfirmation(fundTxn.txID())
       }
@@ -263,6 +284,20 @@ export default function CreateCampaignPage() {
                   className="w-full bg-[#0A0A0F] border border-[#1E1E2E] focus:border-[#6EE7B7] text-[#F1F5F9] rounded-xl px-4 py-3 outline-none transition-colors" 
                   placeholder="https://..." 
                 />
+                <label className="w-full relative flex flex-col items-center justify-center p-6 border-2 border-dashed border-[#1E1E2E] hover:border-[#6EE7B7]/50 rounded-xl bg-[#0A0A0F] cursor-pointer transition-colors group mt-4">
+                  <UploadCloud className="w-6 h-6 text-[#64748B] group-hover:text-[#6EE7B7] mb-2 transition-colors" />
+                  <span className="text-sm text-[#F1F5F9] text-center font-bold">
+                    {uploadingCover ? 'Uploading...' : 'Drop Cover Image Here or Click'}
+                  </span>
+                  <span className="text-[10px] text-[#64748B] mt-1">JPG, PNG, WEBP (Max 5MB)</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleCoverUpload(e.target.files?.[0] || null)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer hidden"
+                    disabled={uploadingCover}
+                  />
+                </label>
               </div>
             </div>
           )}

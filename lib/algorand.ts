@@ -96,6 +96,39 @@ export async function compileProgram(programSource: string) {
   return compiledBytes;
 }
 
+export function decodeGlobalStateValue(value: any) {
+  if (!value) return null;
+  if (value.type === 1) {
+    return Buffer.from(value.bytes, 'base64').toString();
+  }
+  return value.uint;
+}
+
+export async function getAppGlobalState(appId: number) {
+  const app = await algodClient.getApplicationByID(appId).do();
+  const stateEntries = app?.params?.['global-state'] || [];
+  const state: Record<string, any> = {};
+
+  for (const entry of stateEntries) {
+    const key = Buffer.from(entry.key, 'base64').toString();
+    state[key] = decodeGlobalStateValue(entry.value);
+  }
+
+  return state;
+}
+
+export function appArgMethod(method: string) {
+  return new Uint8Array(Buffer.from(method));
+}
+
+export function encodeAddressArg(address: string) {
+  return algosdk.decodeAddress(address).publicKey;
+}
+
+export function encodeUintArg(value: number | bigint) {
+  return algosdk.encodeUint64(typeof value === 'bigint' ? value : BigInt(value));
+}
+
 // Deploy the Crowdfund Smart Contract
 export async function deployCrowdfundApp(
   creatorMnemonic: string,
@@ -148,4 +181,4 @@ export async function deployCrowdfundApp(
     console.error('App deployment error:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
-}
+}

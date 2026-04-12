@@ -2,25 +2,50 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useAuth } from "@/hooks/useAuth"
+import { useWallet } from '@/context/wallet-context'
+import { algodClient, waitForConfirmation } from '@/lib/algorand'
+import { signTransaction } from '@/lib/pera-wallet'
 import { 
   Building2, 
   Search, 
   Filter, 
   MoreVertical, 
-  ExternalLink,
   Plus,
   ArrowUpRight,
-  TrendingUp,
-  Users
+  Users,
+  Pencil,
+  Trash2
 } from "lucide-react"
 import { toast } from "react-toastify"
 import Link from "next/link"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function CampaignManager() {
   const { user } = useAuth()
+  const { wallet } = useWallet()
   const [searchTerm, setSearchTerm] = useState("")
   const [campaigns, setCampaigns] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null)
+
+  const decodeUnsignedTxn = (b64: string) => {
+    const binary = atob(b64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
+  }
 
   useEffect(() => {
     const fetchCampaigns = async () => {
@@ -47,17 +72,75 @@ export default function CampaignManager() {
 
 
   const handleClaim = async (id: string) => {
-    try {
-      const res = await fetch(`/api/campaigns/${id}/claim`, { method: 'POST' });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || 'Failed to claim funds');
+    window.location.href = `/campaigns/${id}`
+  }
+
+  const handleDelete = async (id: string) => {
+    const camp = campaigns.find(c => c.id === id)
+    if (!camp) return
+
+    setCampaignToDelete(null)
+    setIsProcessing(true)
+
+    if (!camp.appId) {
+      // No smart contract deployed, just delete from DB
+      try {
+        const res = await fetch(`/api/campaigns/${id}`, { method: "DELETE" })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || "Delete failed")
+
+        toast.success("Campaign removed from dashboard")
+        setCampaigns((prev) => prev.filter((c) => c.id !== id))
+      } catch (err: any) {
+        toast.error(err.message || "Delete failed")
+      } finally {
+        setIsProcessing(false)
       }
-      toast.success('Funds claimed successfully!');
-      // Refresh local state or window
-      window.location.reload();
+      return
+    }
+
+    if (!wallet.isConnected) {
+      toast.error('Connect your Pera Wallet to authorize deletion on Algorand.')
+      setIsProcessing(false)
+      return
+    }
+
+    try {
+      const prepRes = await fetch(`/api/campaigns/${id}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'prepare' })
+      })
+      const prepared = await prepRes.json()
+      if (!prepRes.ok) throw new Error(prepared.error || 'Failed to prepare cancel txns')
+
+      toast.info('Please sign cancellation transaction', { autoClose: false, toastId: 'del-toast' })
+      
+      const bytes = decodeUnsignedTxn(prepared.deleteTxnB64)
+      const sig = await signTransaction(bytes, wallet.address!)
+      if (!sig.success || !sig.signedTransaction) throw new Error(sig.error || 'Signing failed')
+      const signedDel = Array.isArray(sig.signedTransaction) ? sig.signedTransaction[0] : sig.signedTransaction
+
+      const { txId } = await algodClient.sendRawTransaction(signedDel).do()
+      await waitForConfirmation(txId)
+      
+      toast.update('del-toast', { render: 'Finalizing deletion...', type: 'info' })
+      const finRes = await fetch(`/api/campaigns/${id}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'finalize', txId })
+      })
+      const finData = await finRes.json()
+      if (!finRes.ok) throw new Error(finData.error)
+
+      toast.dismiss('del-toast')
+      toast.success('Campaign deleted and refunds triggered!')
+      setCampaigns((prev) => prev.filter((c) => c.id !== id))
     } catch (err: any) {
-      toast.error(err.message);
+      toast.dismiss('del-toast')
+      toast.error(err.message || 'Cancel failed')
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -175,8 +258,14 @@ export default function CampaignManager() {
                         {camp.status.toLowerCase() === "claimed" && (
                           <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider mr-2">Funds Claimed</span>
                         )}
-                        <button className="p-2 text-[#64748B] hover:text-[#F1F5F9] transition-colors">
-                          <MoreVertical className="w-4 h-4" />
+                        <Link href={`/campaigns/${camp.id}/edit`} className="bg-[#818CF8]/10 text-[#818CF8] text-[10px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1">
+                          <Pencil className="w-3 h-3" /> Edit
+                        </Link>
+                        <button
+                          onClick={() => setCampaignToDelete(camp.id)}
+                          className="bg-red-500/10 text-red-500 text-[10px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" /> Delete
                         </button>
                       </div>
                     </td>
@@ -187,6 +276,30 @@ export default function CampaignManager() {
           </table>
         </div>
       </div>
+
+      <AlertDialog open={!!campaignToDelete} onOpenChange={(open) => !open && setCampaignToDelete(null)}>
+        <AlertDialogContent className="bg-[#111118] border-[#1E1E2E] text-[#F1F5F9]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#64748B]">
+              This action cannot be undone. This will permanently archive this campaign,
+              stop all future deposits, and unlock any accumulated funds for donor refund.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-[#1E1E2E] border-none text-[#F1F5F9] hover:bg-[#2d3d2b] hover:text-[#F1F5F9]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => campaignToDelete && handleDelete(campaignToDelete)} 
+              className="bg-red-500 hover:bg-red-600 text-white font-bold"
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Processing...' : 'Yes, delete campaign'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

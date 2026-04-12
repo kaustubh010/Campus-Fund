@@ -15,18 +15,22 @@ enum Role {
   COMPANY
 }
 
-
+enum InvoiceVerificationStatus {
+  NOT_SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+}
 
 model User {
   id             String    @id
-  googleId       String?    @unique @map("google_id")
+  googleId       String?   @unique @map("google_id")
   email          String    @unique
   sessions       Session[]
   hashedPassword String    @map("hashed_password")
-  name       String?   @map("full_name")
-  picture String?   @map("profile_picture")
+  name           String?   @map("full_name")
+  picture        String?   @map("profile_picture")
   role           Role      @default(USER)
-  plan           String    @default("none")
   walletAddress  String?
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
@@ -35,6 +39,8 @@ model User {
   donations      Donation[]
   transactions   Transaction[]
   companyProfile CompanyProfile?
+  invoiceRefunds InvoiceRefund[]
+  notifications  Notification[]
 
   @@map("users")
 }
@@ -85,65 +91,120 @@ model Deposit {
 }
 
 model Campaign {
-  id            String   @id @default(cuid())
-  title         String
-  description   String
-  category      String
-  coverImage    String?
-  goalINR       Float
-  goalALGO      Float
-  raisedINR     Float    @default(0)
-  raisedALGO    Float    @default(0)
-  deadline      DateTime?
-  escrowAddress String
-  escrowMnemonic String  @map("escrow_mnemonic")
-  status        String   @default("active")  // active | funded | claimed | expired
-  creatorId     String
-  creator       User     @relation(fields: [creatorId], references: [id])
-  companyProfileId String?
-  company          CompanyProfile? @relation(fields: [companyProfileId], references: [id])
-  appId         Int?     // ← Added for smart contract tracking
-  donations     Donation[]
-  transactions  Transaction[]
-  createdAt     DateTime @default(now())
+  id                        String                    @id @default(cuid())
+  title                     String
+  description               String
+  category                  String
+  coverImage                String?
+  goalINR                   Float
+  goalALGO                  Float
+  raisedINR                 Float                     @default(0)
+  raisedALGO                Float                     @default(0)
+  deadline                  DateTime?
+  escrowAddress             String
+  escrowMnemonic            String                    @map("escrow_mnemonic")
+  status                    String                    @default("active") // active | funded | claimed | expired
+  creatorId                 String
+  creator                   User                      @relation(fields: [creatorId], references: [id])
+  companyProfileId          String?
+  company                   CompanyProfile?           @relation(fields: [companyProfileId], references: [id])
+  appId                     Int? // ← Added for smart contract tracking
+  invoiceUrl                String?
+  invoicePublicId           String?                   @map("invoice_public_id")
+  invoiceMimeType           String?                   @map("invoice_mime_type")
+  invoiceAmountINR          Float?                    @map("invoice_amount_inr")
+  invoiceAmountALGO         Float?                    @map("invoice_amount_algo")
+  invoiceAmountMicroALGO    BigInt?                   @map("invoice_amount_microalgo")
+  gstNumber                 String?                   @map("gst_number")
+  gstVerified               Boolean                   @default(false) @map("gst_verified")
+  invoiceVerificationStatus InvoiceVerificationStatus @default(NOT_SUBMITTED) @map("invoice_verification_status")
+  invoiceVerificationReason String?                   @map("invoice_verification_reason")
+  invoiceVerifiedAt         DateTime?                 @map("invoice_verified_at")
+  claimedAt                 DateTime?                 @map("claimed_at")
+  deletedAt                 DateTime?                 @map("deleted_at")
+  claimTxId                 String?                   @map("claim_tx_id")
+  deleteTxId                String?                   @map("delete_tx_id")
+  donations                 Donation[]
+  transactions              Transaction[]
+  invoiceRefunds            InvoiceRefund[]
+  notifications             Notification[]
+  createdAt                 DateTime                  @default(now())
 }
 
 model CompanyProfile {
-  id            String   @id @default(cuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String     @id @default(cuid())
+  userId        String     @unique
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   orgName       String
   orgType       String
   contactPerson String
   university    String?
   description   String?
   logoUrl       String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime   @default(now())
   campaigns     Campaign[]
 }
 
 model Donation {
-  id          String   @id @default(cuid())
-  campaignId  String
-  campaign    Campaign @relation(fields: [campaignId], references: [id])
-  donorId     String
-  donor       User     @relation(fields: [donorId], references: [id])
-  amountINR   Float
-  amountALGO  Float
-  txId        String
-  createdAt   DateTime @default(now())
+  id                 String         @id @default(cuid())
+  campaignId         String
+  campaign           Campaign       @relation(fields: [campaignId], references: [id])
+  donorId            String
+  donor              User           @relation(fields: [donorId], references: [id])
+  amountINR          Float
+  amountALGO         Float
+  refundedALGO       Float          @default(0) @map("refunded_algo")
+  refundedINR        Float          @default(0) @map("refunded_inr")
+  isRefunded         Boolean        @default(false) @map("is_refunded")
+  txId               String
+  donorWalletAddress String?
+  invoiceRefund      InvoiceRefund?
+  createdAt          DateTime       @default(now())
 }
 
 model Transaction {
-  id          String   @id @default(cuid())
-  campaignId  String
-  campaign    Campaign @relation(fields: [campaignId], references: [id])
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  amountINR   Float
-  amountALGO  Float
-  type        String   // Donation, Claim, Refund
-  status      String   // success, pending, failed
-  txId        String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  amountINR  Float
+  amountALGO Float
+  type       String // Donation, Claim, Refund
+  status     String // success, pending, failed
+  txId       String
+  createdAt  DateTime @default(now())
+}
+
+model InvoiceRefund {
+  id                 String    @id @default(cuid())
+  campaignId         String
+  campaign           Campaign  @relation(fields: [campaignId], references: [id])
+  donorId            String
+  donor              User      @relation(fields: [donorId], references: [id])
+  donationId         String    @unique
+  donation           Donation  @relation(fields: [donationId], references: [id])
+  donorWalletAddress String // snapshot — do not use User.walletAddress
+  donatedALGO        Float
+  refundALGO         Float
+  sharePct           Float
+  type               String    @default("surplus") // "surplus" | "delete_refund"
+  txId               String? // filled after donor claims
+  status             String    @default("pending") // "pending" | "sent" | "failed"
+  claimedAt          DateTime?
+  createdAt          DateTime  @default(now())
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  type       String // "refund_available", "campaign_deleted", "goal_reached", "campaign_funded"
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  title      String
+  message    String
+  refundALGO Float? // populated for refund notifications
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
 }
