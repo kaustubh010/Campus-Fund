@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { ArrowUpRight, ArrowDownLeft, FileText, Download } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([])
@@ -86,7 +87,12 @@ export default function TransactionsPage() {
               <tbody className="divide-y divide-[#1E1E2E]">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-[#64748B]">Loading transactions...</td>
+                    <td colSpan={5} className="p-8 text-center text-[#64748B]">
+                      <div className="flex flex-col items-center justify-center py-6">
+                        <Spinner className="w-8 h-8 text-[#6EE7B7] mb-4" />
+                        <span className="font-bold">Loading transactions...</span>
+                      </div>
+                    </td>
                   </tr>
                 ) : transactions.length === 0 ? (
                   <tr>

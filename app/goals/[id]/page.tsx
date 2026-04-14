@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Calendar,
   Target,
@@ -27,8 +28,9 @@ export default function CampaignDetailsPage({ params }: { params: Promise<{ id: 
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <p className="text-muted-foreground">Loading campaign details...</p>
+      <div className="container mx-auto px-4 py-12 flex flex-col items-center justify-center min-h-[50vh]">
+        <Spinner className="w-8 h-8 text-[#6EE7B7] mb-4" />
+        <p className="text-muted-foreground font-medium">Loading campaign details...</p>
       </div>
     );
   }

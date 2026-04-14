@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Save, UploadCloud } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'react-toastify'
 
 export default function EditCampaignPage() {
@@ -87,7 +88,14 @@ export default function EditCampaignPage() {
     }
   }
 
-  if (loading) return <div className="min-h-screen bg-[#0A0A0F] pt-24 text-center text-[#F1F5F9]">Loading...</div>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] pt-24 pb-12 flex flex-col items-center justify-center text-[#F1F5F9]">
+        <Spinner className="w-10 h-10 text-[#6EE7B7] mb-6" />
+        <span className="font-bold text-xl font-[Syne] tracking-wide text-[#6EE7B7]">Loading...</span>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] pt-24 pb-20 px-6">

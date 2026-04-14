@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { WalletProvider } from "@/context/wallet-context";
 import { Navbar } from "@/components/navbar";
+import Footer from "@/components/footer";
 import { ToastContainer } from "react-toastify";
 import { AuthProvider } from "@/hooks/useAuth";
 
@@ -29,7 +30,8 @@ export default function RootLayout({
             <WalletProvider>
               <Navbar />
               {children}
-              <ToastContainer position="bottom-right" />
+              <Footer />
+              <ToastContainer theme="colored" position="bottom-right" />
             </WalletProvider>
           <Analytics />
         </AuthProvider>

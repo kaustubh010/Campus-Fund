@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useWallet } from '@/context/wallet-context'
 import { WalletConnectButton } from '@/components/wallet-connect-button'
 import { Copy, ExternalLink, ShieldCheck, CheckCircle2 } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'react-toastify'
 import Link from 'next/link'
 
@@ -39,7 +40,12 @@ export default function ConnectWalletPage() {
   }
 
   if (authLoading) {
-    return <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center text-white">Loading...</div>
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex flex-col items-center justify-center text-white">
+        <Spinner className="w-10 h-10 text-[#6EE7B7] mb-6" />
+        <span className="font-bold text-xl font-[Syne] tracking-wide text-[#6EE7B7]">Loading...</span>
+      </div>
+    )
   }
 
   return (

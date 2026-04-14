@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useWallet } from '@/context/wallet-context'
 import { ExternalLink, Copy, CheckCircle2, Lock, Unlock, ShieldCheck, Users, Calendar, AlertCircle, XCircle, FileText, UploadCloud } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'react-toastify'
 import { useAlgoRate } from '@/hooks/useAlgoRate'
 import Link from 'next/link'
@@ -33,6 +34,7 @@ export default function CampaignDetailPage() {
   const [loading, setLoading] = useState(true)
   const [donateAmount, setDonateAmount] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [processingAction, setProcessingAction] = useState<string | null>(null)
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
   const [invoiceEdits, setInvoiceEdits] = useState<Record<string, string>>({})
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
@@ -178,6 +180,7 @@ export default function CampaignDetailPage() {
     }
 
     setProcessing(true)
+    setProcessingAction('upload')
     try {
       const formData = new FormData()
       formData.append('invoice', invoiceFile)
@@ -195,6 +198,7 @@ export default function CampaignDetailPage() {
       toast.error(err.message || 'Invoice upload failed')
     } finally {
       setProcessing(false)
+      setProcessingAction(null)
     }
   }
 
@@ -215,6 +219,7 @@ export default function CampaignDetailPage() {
       return
     }
     setProcessing(true)
+    setProcessingAction('verify')
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/invoice/verify`, {
         method: 'POST',
@@ -246,6 +251,7 @@ export default function CampaignDetailPage() {
       toast.error(err.message || 'Verification failed')
     } finally {
       setProcessing(false)
+      setProcessingAction(null)
     }
   }
 
@@ -256,6 +262,7 @@ export default function CampaignDetailPage() {
     }
 
     setProcessing(true)
+    setProcessingAction('claim')
     try {
       const prepareRes = await fetch(`/api/campaigns/${campaignId}/claim`, {
         method: 'POST',
@@ -292,6 +299,7 @@ export default function CampaignDetailPage() {
       toast.error(err.message || 'Claim failed')
     } finally {
       setProcessing(false)
+      setProcessingAction(null)
     }
   }
 
@@ -299,6 +307,7 @@ export default function CampaignDetailPage() {
     setCancelDialogOpen(false)
 
     setProcessing(true)
+    setProcessingAction('cancel')
     try {
       const prepRes = await fetch(`/api/campaigns/${campaignId}/cancel`, {
         method: 'POST',
@@ -355,11 +364,17 @@ export default function CampaignDetailPage() {
       toast.error(err.message || 'Cancel failed')
     } finally {
       setProcessing(false)
+      setProcessingAction(null)
     }
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-[#0A0A0F] pt-24 text-center text-[#F1F5F9]">Loading campaign...</div>
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] pt-24 pb-12 flex flex-col items-center justify-center text-[#F1F5F9]">
+        <Spinner className="w-10 h-10 text-[#6EE7B7] mb-6" />
+        <span className="font-bold text-xl font-[Syne] tracking-wide text-[#6EE7B7]">Loading campaign...</span>
+      </div>
+    )
   }
 
   if (!campaign) {
@@ -421,50 +436,43 @@ export default function CampaignDetailPage() {
                 {campaign.title}
               </h1>
               
-              <div className="flex items-center gap-4 text-[#64748B] mb-8 pb-8 border-b border-[#1E1E2E]">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-[#1E1E2E] rounded-full flex items-center justify-center text-[#F1F5F9] font-bold">
-                    {campaign.creator.name?.[0].toUpperCase()}
+              {/* Organizer Profile */}
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 pb-8 border-b border-[#1E1E2E]">
+                <div className="flex items-center gap-5">
+                  <div className="w-14 h-14 bg-[#1E1E2E] rounded-full flex items-center justify-center text-[#6EE7B7] font-bold text-2xl border border-[#3d5a3b] shadow-[0_0_15px_rgba(110,231,183,0.15)] select-none">
+                    {campaign.company?.orgName?.[0]?.toUpperCase() || campaign.creator.name?.[0]?.toUpperCase()}
                   </div>
-                  <span className="font-medium text-[#F1F5F9]">
-                    {campaign.creator.name} 
+                  <div>
+                    <span className="text-xs text-[#64748B] uppercase tracking-widest font-bold mb-1.5 block">Organized By</span>
+                    <span className="font-bold text-[#F1F5F9] text-xl font-[Syne]">
+                      {campaign.company?.orgName || campaign.creator.name}
+                    </span>
                     {campaign.company && (
-                      <span className="text-[#64748B] ml-2 font-normal">
-                        ({campaign.company.orgName})
-                      </span>
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-[#64748B] mt-2 font-medium">
+                        {campaign.company.orgType && (
+                          <span className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-[#6EE7B7] opacity-80" /> {campaign.company.orgType}
+                          </span>
+                        )}
+                        {campaign.company.university && (
+                          <span className="flex items-center gap-1.5">
+                            <Users className="w-4 h-4 opacity-80" /> {campaign.company.university}
+                          </span>
+                        )}
+                        {campaign.company.contactPerson && (
+                          <span className="flex items-center gap-1.5">
+                            Contact: {campaign.company.contactPerson}
+                          </span>
+                        )}
+                      </div>
                     )}
-                  </span>
-                </div>
-                <span>•</span>
-                <span>{new Date(campaign.createdAt).toLocaleDateString()}</span>
-              </div>
-
-              {campaign.company && (
-                <div className="flex items-start gap-4 mb-8 bg-[#1E1E2E]/30 p-5 rounded-2xl border border-[#1E1E2E]">
-                  <div className="flex-1">
-                    <h4 className="font-bold text-[#F1F5F9] mb-1 font-[Syne]">{campaign.company.orgName}</h4>
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-[#64748B]">
-                      {campaign.company.orgType && (
-                         <span className="flex items-center gap-1">
-                           <ShieldCheck className="w-4 h-4 text-[#6EE7B7] opacity-70" />
-                           {campaign.company.orgType}
-                         </span>
-                      )}
-                      {campaign.company.university && (
-                         <span className="flex items-center gap-1">
-                           <Users className="w-4 h-4 opacity-70" />
-                           {campaign.company.university}
-                         </span>
-                      )}
-                      {campaign.company.contactPerson && (
-                         <span className="flex items-center gap-1">
-                           <span>Contact: {campaign.company.contactPerson}</span>
-                         </span>
-                      )}
-                    </div>
                   </div>
                 </div>
-              )}
+                <div className="text-left md:text-right mt-2 md:mt-0">
+                  <span className="text-xs text-[#64748B] uppercase tracking-widest font-bold mb-1.5 block">Campaign Started</span>
+                  <span className="text-[#F1F5F9] font-medium text-base">{new Date(campaign.createdAt).toLocaleDateString()}</span>
+                </div>
+              </div>
 
               <div className="prose prose-invert max-w-none text-[#F1F5F9]/80 font-[DM_Sans] leading-relaxed">
                 <p className="whitespace-pre-wrap">{campaign.description}</p>
@@ -615,9 +623,10 @@ export default function CampaignDetailPage() {
                           type="button"
                           onClick={handleInvoiceUpload}
                           disabled={processing || !invoiceFile}
-                          className="w-full py-2 bg-[#1E1E2E] text-[#F1F5F9] rounded-xl text-xs font-bold"
+                          className="w-full py-2 bg-[#1E1E2E] text-[#F1F5F9] rounded-xl text-xs font-bold transition-all hover:-translate-y-0.5 hover:bg-[#2A2A3A] flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                         >
-                          Upload
+                          {processingAction === 'upload' && <Spinner className="w-3.5 h-3.5 text-[#F1F5F9]" />}
+                          {processingAction === 'upload' ? 'Uploading...' : 'Upload'}
                         </button>
                         <div className="space-y-2 max-h-48 overflow-y-auto">
                           {(campaign.invoices || []).map((inv: any) => (
@@ -639,16 +648,19 @@ export default function CampaignDetailPage() {
                                   placeholder="INR total"
                                 />
                               </div>
-                              <div className="flex gap-1 flex-wrap">
+                              <div className="flex gap-2 flex-wrap mt-2">
                                 <button
                                   type="button"
-                                  disabled={processing}
-                                  className="px-2 py-1 bg-[#6EE7B7]/20 text-[#6EE7B7] rounded"
+                                  disabled={processing || processingAction !== null}
+                                  className="px-3 py-1.5 bg-[#6EE7B7]/10 hover:bg-[#6EE7B7]/20 text-[#6EE7B7] border border-[#6EE7B7]/20 rounded-lg transition-all cursor-pointer hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-1.5 font-bold text-xs"
                                   onClick={async () => {
+                                    const actionId = `save-${inv.id}`;
+                                    setProcessingAction(actionId);
                                     const raw = invoiceEdits[inv.id] ?? inv.extractedAmountINR
                                     const n = Number(raw)
                                     if (!Number.isFinite(n) || n <= 0) {
                                       toast.error('Enter a valid INR amount')
+                                      setProcessingAction(null);
                                       return
                                     }
                                     try {
@@ -656,39 +668,52 @@ export default function CampaignDetailPage() {
                                       toast.success('Amount saved')
                                     } catch (e: any) {
                                       toast.error(e.message)
+                                    } finally {
+                                      setProcessingAction(null);
                                     }
                                   }}
                                 >
-                                  Save INR
+                                  {processingAction === `save-${inv.id}` && <Spinner className="w-3.5 h-3.5" />}
+                                  {processingAction === `save-${inv.id}` ? 'Saving...' : 'Save INR'}
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={processing || inv.status === 'ACCEPTED'}
-                                  className="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded"
+                                  disabled={processing || processingAction !== null || inv.status === 'ACCEPTED'}
+                                  className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg transition-all cursor-pointer hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-1.5 font-bold text-xs"
                                   onClick={async () => {
+                                    const actionId = `accept-${inv.id}`;
+                                    setProcessingAction(actionId);
                                     try {
                                       await patchInvoice(inv.id, { status: 'ACCEPTED' })
                                       toast.success('Accepted for claim total')
                                     } catch (e: any) {
                                       toast.error(e.message)
+                                    } finally {
+                                      setProcessingAction(null);
                                     }
                                   }}
                                 >
-                                  Accept
+                                  {processingAction === `accept-${inv.id}` && <Spinner className="w-3.5 h-3.5" />}
+                                  {processingAction === `accept-${inv.id}` ? 'Accepting...' : 'Accept'}
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={processing}
-                                  className="px-2 py-1 bg-red-500/10 text-red-400 rounded"
+                                  disabled={processing || processingAction !== null}
+                                  className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-lg transition-all cursor-pointer hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-1.5 font-bold text-xs"
                                   onClick={async () => {
+                                    const actionId = `reject-${inv.id}`;
+                                    setProcessingAction(actionId);
                                     try {
                                       await patchInvoice(inv.id, { status: 'REJECTED' })
                                     } catch (e: any) {
                                       toast.error(e.message)
+                                    } finally {
+                                      setProcessingAction(null);
                                     }
                                   }}
                                 >
-                                  Reject
+                                  {processingAction === `reject-${inv.id}` && <Spinner className="w-3.5 h-3.5" />}
+                                  {processingAction === `reject-${inv.id}` ? 'Rejecting...' : 'Reject'}
                                 </button>
                               </div>
                               <span className="text-[#64748B]">{inv.status}</span>
@@ -698,9 +723,10 @@ export default function CampaignDetailPage() {
                         <button
                           onClick={handleVerifyInvoice}
                           disabled={processing}
-                          className="w-full py-2 bg-[#6EE7B7]/20 text-[#6EE7B7] border border-[#6EE7B7]/30 rounded-xl text-xs font-bold"
+                          className="w-full py-2 bg-[#6EE7B7]/20 text-[#6EE7B7] border border-[#6EE7B7]/30 rounded-xl text-xs font-bold transition-all hover:-translate-y-0.5 hover:bg-[#6EE7B7]/30 flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                         >
-                          Lock invoice total on-chain
+                          {processingAction === 'verify' && <Spinner className="w-3.5 h-3.5 text-[#6EE7B7]" />}
+                          {processingAction === 'verify' ? 'Locking on-chain...' : 'Lock invoice total on-chain'}
                         </button>
                         <p className="text-[11px] text-[#64748B]">
                           Totals: ₹{campaign.invoiceAmountINR ?? '—'} · Status:{' '}
@@ -717,14 +743,15 @@ export default function CampaignDetailPage() {
                       <button 
                         onClick={handleClaim}
                         disabled={processing || campaign.invoiceVerificationStatus !== 'APPROVED'}
-                        className="w-full py-4 bg-gradient-to-r from-[#6EE7B7] to-[#818CF8] text-[#0A0A0F] rounded-2xl font-bold text-lg hover:shadow-[0_0_30px_rgba(110,231,183,0.4)] transition-all flex justify-center items-center gap-2 disabled:opacity-50"
+                        className="w-full py-4 bg-gradient-to-r from-[#6EE7B7] to-[#818CF8] text-[#0A0A0F] rounded-2xl font-bold text-lg hover:shadow-[0_0_30px_rgba(110,231,183,0.4)] transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 disabled:transform-none"
                       >
-                        {processing ? "Executing Claim..." : "Claim Escrow Funds"}
+                        {processingAction === 'claim' && <Spinner className="w-5 h-5 border-[#0A0A0F] text-[#0A0A0F]" />}
+                        {processingAction === 'claim' ? "Executing Claim..." : "Claim Escrow Funds"}
                       </button>
                       <button 
                         onClick={() => setCancelDialogOpen(true)}
                         disabled={processing}
-                        className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 rounded-2xl font-bold transition-all flex justify-center items-center gap-2"
+                        className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 rounded-2xl font-bold transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 disabled:transform-none"
                       >
                         Cancel Campaign & Refund
                       </button>
