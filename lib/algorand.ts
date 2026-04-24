@@ -17,7 +17,7 @@ const ALGORAND_NETWORK = {
 };
 
 // Default to testnet for development
-export const ACTIVE_NETWORK = ALGORAND_NETWORK.testnet;
+export const ACTIVE_NETWORK = process.env.NEXT_PUBLIC_ALGORAND_NETWORK === 'mainnet' ? ALGORAND_NETWORK.mainnet : ALGORAND_NETWORK.testnet;
 
 // Initialize Algorand clients
 export const algodClient = new algosdk.Algodv2(

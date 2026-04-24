@@ -14,8 +14,8 @@ const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono" });
 
 export const metadata: Metadata = {
-  title: "CampusFund | Secure Campus Crowdfunding",
-  description: "A transparent, blockchain-powered campus fundraising platform.",
+  title: "CampusFund -- Crowdfunding for Students",
+  description: "The transparent, escrow-backed platform where campus ideas become reality. Launch your campaign, rally the community, and build the future—trustless.",
 };
 
 export default function RootLayout({

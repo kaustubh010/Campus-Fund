@@ -72,7 +72,7 @@ export default function HomePage() {
       </section>
 
       {/* Escrow & Trust */}
-      <section className="py-24 relative z-10">
+      <section id="about" className="py-24 relative z-10">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row gap-12 items-center">
             <div className="flex-1 space-y-6">

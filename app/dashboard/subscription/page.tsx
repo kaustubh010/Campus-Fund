@@ -99,7 +99,7 @@ export default function Subscription() {
 
           <div className="flex gap-4">
             {user?.plan !== 'pro' ? (
-              <Link href="/pricing" className="flex-1 py-3 bg-[#6EE7B7] text-[#0A0A0F] rounded-xl font-bold hover:opacity-90 transition-opacity text-center">
+              <Link href="/upgrade" className="flex-1 py-3 bg-[#6EE7B7] text-[#0A0A0F] rounded-xl font-bold hover:opacity-90 transition-opacity text-center">
                 Upgrade to Pro
               </Link>
             ) : (

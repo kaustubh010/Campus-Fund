@@ -25,19 +25,19 @@ export function Navbar() {
 
   const loggedOutNav = [
     { href: '/#how-it-works', label: 'How it works' },
-    { href: '/#organizations', label: 'For Organizations' },
+    { href: '/#about', label: 'About Us' },
     { href: '/campaigns', label: 'Explore campaigns' },
   ]
 
   const individualNav = [
     { href: '/campaigns', label: 'Explore' },
-    { href: '/dashboard/transactions', label: 'History' },
+    { href: '/history', label: 'History' },
   ]
 
   const orgNav = [
-    { href: '/dashboard/company', label: 'Dashboard' },
     { href: '/campaigns', label: 'Explore' },
-    { href: '/dashboard/company/campaigns', label: 'Campaigns' },
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/dashboard/campaigns', label: 'My Campaigns' },
   ]
 
   const currentNav = !user ? loggedOutNav : user.role === 'COMPANY' ? orgNav : individualNav
@@ -148,6 +148,15 @@ export function Navbar() {
                             className="w-full text-left px-3 py-2 text-sm text-[#6EE7B7] hover:bg-[#6EE7B7]/10 rounded-xl flex items-center gap-3 font-bold"
                           >
                             <Sparkles className="w-4 h-4" /> Upgrade to Org
+                          </Link>
+                        )}
+                        {user.role === 'COMPANY' && (
+                          <Link 
+                            href="/dashboard/subscription" 
+                            onClick={() => setDropdownOpen(false)}
+                            className="w-full text-left px-3 py-2 text-sm text-[#6EE7B7] hover:bg-[#6EE7B7]/10 rounded-xl flex items-center gap-3 font-bold"
+                          >
+                            <Sparkles className="w-4 h-4" /> Your Subscription
                           </Link>
                         )}
                       </div>

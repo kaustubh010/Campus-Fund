@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import React from 'react'
 
 const footer = () => {
   return (
@@ -15,7 +14,6 @@ const footer = () => {
           </div>
           <div className="flex items-center gap-6 text-[#64748B] font-medium text-sm">
             <Link href="/campaigns" className="hover:text-[#6EE7B7] transition-colors">Explore</Link>
-            <Link href="/dashboard" className="hover:text-[#6EE7B7] transition-colors">Dashboard</Link>
             <Link href="https://github.com/kaustubh010/Campus-Fund" target="_blank" className="hover:text-[#6EE7B7] transition-colors">GitHub</Link>
           </div>
           <div className="text-[#64748B] text-sm">

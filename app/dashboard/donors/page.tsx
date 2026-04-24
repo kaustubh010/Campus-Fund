@@ -97,9 +97,6 @@ export default function DonorAnalytics() {
               className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl pl-12 pr-4 py-3 text-[#F1F5F9] outline-none focus:border-[#6EE7B7]/50 transition-colors"
             />
           </div>
-          <button className="flex items-center gap-2 bg-[#111118] border border-[#1E1E2E] px-6 py-3 rounded-xl text-[#F1F5F9] hover:bg-[#1E1E2E] transition-colors">
-            <Filter className="w-5 h-5 text-[#64748B]" /> Audience Filters
-          </button>
         </div>
 
         {/* Table/List */}
