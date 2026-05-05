@@ -115,23 +115,25 @@ Want to CREATE campaigns?
 ## ⚡ Features
 
 ### 👤 For Users (Donors)
-- **Trustless donations** — funds locked on-chain, not held by us
+- **Trustless donations** — funds locked in a smart contract on-chain, not held by us
 - **Pera Wallet integration** — connect and donate in seconds
 - **Multi-currency display** — every amount shown in ₹ · $ · ALGO simultaneously
 - **Donation history** — full transaction log with Algoexplorer links
-- **Auto-refund protection** — funds returned automatically if campaign fails
+- **Invoice transparency** — see exactly what your funds are being spent on, per invoice submitted by the creator
+- **Pro-rata refund protection** — excess or failed campaign funds returned proportionally based on your contribution
 
 ### 🏢 For Companies (Campaign Creators)
 - **Campaign creation** — multi-step form with live INR → ALGO conversion
-- **Per-campaign escrow** — unique Algorand keypair generated per campaign
-- **Goal enforcement** — claim button activates only at 100% funded
+- **Per-campaign smart contract** — unique Algorand smart contract deployed per campaign, enforcing all release logic on-chain
+- **Invoice-gated claiming** — submit invoices to unlock funds; contract releases only the invoiced amount, not the full balance
+- **Incremental claims** — submit and claim multiple invoices over the campaign lifecycle
 - **Company dashboard** — overview cards, campaign manager, status tracking
 - **Donor analytics** — per-campaign donor tables, exportable as CSV
 - **Audit trail** — immutable on-chain event log (Deposit / Claim / Refund)
 - **Subscription tiers** — Starter / Pro / Enterprise with usage limits
 
 ### 🔐 Platform-wide
-- Full authentication (NextAuth — sessions + JWT)
+- Full authentication via **Lucia Auth** + **Arctic** — sessions with Google OAuth
 - Role-based access control (user vs company) enforced at middleware + API level
 - Wallet connection persisted across sessions
 

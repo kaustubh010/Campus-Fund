@@ -8,6 +8,7 @@ import { ExternalLink, Copy, CheckCircle2, Lock, Unlock, ShieldCheck, Users, Cal
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'react-toastify'
 import { useAlgoRate } from '@/hooks/useAlgoRate'
+import RazorpayCheckout from '@/components/RazorpayCheckout'
 import Link from 'next/link'
 import algosdk from 'algosdk'
 import { algodClient, algoToMicroAlgo, waitForConfirmation } from '@/lib/algorand'
@@ -813,6 +814,21 @@ export default function CampaignDetailPage() {
                       >
                         {processing ? "Processing..." : "Donate with Pera"}
                       </button>
+
+                      <div className="mt-4">
+                        <RazorpayCheckout
+                          orderId={campaignId}
+                          amount={Number(donateAmount) || 0}
+                          name={user?.name || ""}
+                          email={user?.email || ""}
+                          phone="" // Optional or from user profile if available
+                          onSuccess={(data) => {
+                            toast.success("Payment successful! Razorpay ID: " + data.razorpayPaymentId);
+                            // In a real app, you'd verify this on the backend
+                            fetchCampaign();
+                          }}
+                        />
+                      </div>
                     </>
                   ) : (
                     <div className="text-center p-8 bg-[#0A0A0F] border border-[#1E1E2E] rounded-3xl text-[#F1F5F9]">
