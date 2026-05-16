@@ -1,0 +1,600 @@
+#pragma version 10
+
+// CampusFundCampaign
+// Global State:
+// - creator (bytes)
+// - goal (uint64)
+// - deadline (uint64)
+// - total_raised (uint64)
+// - invoice_amount (uint64)
+// - invoice_verified (bool as uint64)
+// - claimed (bool as uint64)
+// - deleted (bool as uint64)
+
+txn ApplicationID
+int 0
+==
+bnz handle_create
+
+txn OnCompletion
+int DeleteApplication
+==
+bnz handle_delete_campaign
+
+txn OnCompletion
+int NoOp
+==
+bnz handle_noop
+
+err
+
+handle_create:
+    byte "creator"
+    txn Sender
+    app_global_put
+
+    byte "goal"
+    txna ApplicationArgs 0
+    btoi
+    app_global_put
+
+    byte "deadline"
+    txna ApplicationArgs 1
+    btoi
+    app_global_put
+
+    byte "total_raised"
+    int 0
+    app_global_put
+
+    byte "invoice_amount"
+    int 0
+    app_global_put
+
+    byte "invoice_verified"
+    int 0
+    app_global_put
+
+    byte "claimed"
+    int 0
+    app_global_put
+
+    byte "deleted"
+    int 0
+    app_global_put
+
+    int 1
+    return
+
+handle_noop:
+    // If no method selector is passed, treat as donate() and validate via grouped payment.
+    txn NumAppArgs
+    int 0
+    ==
+    bnz handle_donate
+
+    txna ApplicationArgs 0
+    byte "donate"
+    ==
+    bnz handle_donate
+
+    txna ApplicationArgs 0
+    byte "set_invoice_verified"
+    ==
+    bnz handle_set_invoice_verified
+
+    txna ApplicationArgs 0
+    byte "claim_with_invoice"
+    ==
+    bnz handle_claim_with_invoice
+
+    err
+
+handle_donate:
+    global LatestTimestamp
+    byte "deadline"
+    app_global_get
+    <=
+    assert
+
+    byte "claimed"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    byte "deleted"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    // Accept either txn ordering in the group:
+    // 1) AppCall then Payment
+    // 2) Payment then AppCall
+    // Store matched donation amount in scratch slot 0.
+    int 0
+    store 0
+
+    // Try next transaction (AppCall -> Pay)
+    txn GroupIndex
+    int 1
+    +
+    global GroupSize
+    <
+    bz try_prev_payment
+
+    txn GroupIndex
+    int 1
+    +
+    gtxns TypeEnum
+    int pay
+    ==
+    bz try_prev_payment
+
+    txn GroupIndex
+    int 1
+    +
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    bz try_prev_payment
+
+    txn GroupIndex
+    int 1
+    +
+    gtxns Sender
+    txn Sender
+    ==
+    bz try_prev_payment
+
+    txn GroupIndex
+    int 1
+    +
+    gtxns Amount
+    store 0
+
+try_prev_payment:
+    // If not found yet, try previous transaction (Pay -> AppCall)
+    load 0
+    int 0
+    >
+    bnz have_donation_amount
+
+    txn GroupIndex
+    int 0
+    >
+    bz have_donation_amount
+
+    txn GroupIndex
+    int 1
+    -
+    gtxns TypeEnum
+    int pay
+    ==
+    bz have_donation_amount
+
+    txn GroupIndex
+    int 1
+    -
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    bz have_donation_amount
+
+    txn GroupIndex
+    int 1
+    -
+    gtxns Sender
+    txn Sender
+    ==
+    bz have_donation_amount
+
+    txn GroupIndex
+    int 1
+    -
+    gtxns Amount
+    store 0
+
+have_donation_amount:
+    load 0
+    int 0
+    >
+    assert
+
+    byte "total_raised"
+    byte "total_raised"
+    app_global_get
+    load 0
+    +
+    app_global_put
+
+    int 1
+    return
+
+handle_set_invoice_verified:
+    txn Sender
+    byte "creator"
+    app_global_get
+    ==
+    assert
+
+    byte "claimed"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    byte "deleted"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    byte "invoice_verified"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    txna ApplicationArgs 1
+    btoi
+    int 0
+    >
+    assert
+
+    txna ApplicationArgs 1
+    btoi
+    byte "total_raised"
+    app_global_get
+    <=
+    assert
+
+    byte "invoice_verified"
+    int 1
+    app_global_put
+
+    byte "invoice_amount"
+    txna ApplicationArgs 1
+    btoi
+    app_global_put
+
+    int 1
+    return
+
+handle_claim_with_invoice:
+    txn Sender
+    byte "creator"
+    app_global_get
+    ==
+    assert
+
+    byte "invoice_verified"
+    app_global_get
+    int 1
+    ==
+    assert
+
+    byte "claimed"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    byte "deleted"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    byte "invoice_amount"
+    app_global_get
+    int 0
+    >
+    assert
+
+    txn NumAppArgs
+    int 1
+    >
+    assert
+
+    txn NumAppArgs
+    int 1
+    -
+    int 2
+    %
+    int 0
+    ==
+    assert
+
+    int 0
+    store 0
+
+    int 1
+    store 1
+
+sum_refunds_loop:
+    load 1
+    txn NumAppArgs
+    <
+    bz sum_refunds_done
+
+    load 0
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    +
+    store 0
+
+    load 1
+    int 2
+    +
+    store 1
+    b sum_refunds_loop
+
+sum_refunds_done:
+    global CurrentApplicationAddress
+    balance
+    byte "invoice_amount"
+    app_global_get
+    -
+    global CurrentApplicationAddress
+    min_balance
+    -
+    store 2
+
+    load 2
+    int 0
+    >=
+    assert
+
+    load 0
+    load 2
+    <=
+    assert
+
+    // TODO: Algorand supports up to 256 inner txns.
+    // For >254 donors, split claim_with_invoice into batches.
+    txn NumAppArgs
+    int 1
+    -
+    int 2
+    /
+    int 254
+    <=
+    assert
+
+    // invoice payout to creator
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    byte "creator"
+    app_global_get
+    itxn_field Receiver
+    byte "invoice_amount"
+    app_global_get
+    itxn_field Amount
+    itxn_submit
+
+    int 1
+    store 1
+
+refund_loop:
+    load 1
+    txn NumAppArgs
+    <
+    bz refund_loop_done
+
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    int 0
+    >
+    bz refund_skip_zero
+
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    load 1
+    txnas ApplicationArgs
+    itxn_field Receiver
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    itxn_field Amount
+    itxn_submit
+
+refund_skip_zero:
+    load 1
+    int 2
+    +
+    store 1
+    b refund_loop
+
+refund_loop_done:
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    byte "creator"
+    app_global_get
+    itxn_field Receiver
+    int 0
+    itxn_field Amount
+    byte "creator"
+    app_global_get
+    itxn_field CloseRemainderTo
+    itxn_submit
+
+    byte "claimed"
+    int 1
+    app_global_put
+
+    int 1
+    return
+
+handle_delete_campaign:
+    txn Sender
+    byte "creator"
+    app_global_get
+    ==
+    assert
+
+    byte "claimed"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    byte "deleted"
+    app_global_get
+    int 0
+    ==
+    assert
+
+    byte "total_raised"
+    app_global_get
+    int 0
+    ==
+    bnz delete_no_donations
+
+    // With donations: args are [delete_campaign, donor1, refund1, donor2, refund2, ...]
+    txna ApplicationArgs 0
+    byte "delete_campaign"
+    ==
+    assert
+
+    txn NumAppArgs
+    int 1
+    >
+    assert
+
+    txn NumAppArgs
+    int 1
+    -
+    int 2
+    %
+    int 0
+    ==
+    assert
+
+    int 0
+    store 0
+    int 1
+    store 1
+
+delete_sum_loop:
+    load 1
+    txn NumAppArgs
+    <
+    bz delete_sum_done
+
+    load 0
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    +
+    store 0
+
+    load 1
+    int 2
+    +
+    store 1
+    b delete_sum_loop
+
+delete_sum_done:
+    // Sum of refund args (load 0) must be <= total_raised; remainder goes to creator on close.
+    // Stack for <= : A deeper, B top → A <= B → sum <= total_raised
+    load 0
+    byte "total_raised"
+    app_global_get
+    <=
+    assert
+
+    int 1
+    store 1
+
+delete_refund_loop:
+    load 1
+    txn NumAppArgs
+    <
+    bz delete_refund_done
+
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    int 0
+    >
+    bz delete_refund_skip_zero
+
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    load 1
+    txnas ApplicationArgs
+    itxn_field Receiver
+    load 1
+    int 1
+    +
+    txnas ApplicationArgs
+    btoi
+    itxn_field Amount
+    itxn_submit
+
+delete_refund_skip_zero:
+    load 1
+    int 2
+    +
+    store 1
+    b delete_refund_loop
+
+delete_refund_done:
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    byte "creator"
+    app_global_get
+    itxn_field Receiver
+    int 0
+    itxn_field Amount
+    byte "creator"
+    app_global_get
+    itxn_field CloseRemainderTo
+    itxn_submit
+
+    byte "deleted"
+    int 1
+    app_global_put
+
+    int 1
+    return
+
+delete_no_donations:
+    itxn_begin
+    int pay
+    itxn_field TypeEnum
+    byte "creator"
+    app_global_get
+    itxn_field Receiver
+    int 0
+    itxn_field Amount
+    byte "creator"
+    app_global_get
+    itxn_field CloseRemainderTo
+    itxn_submit
+
+    byte "deleted"
+    int 1
+    app_global_put
+
+    int 1
+    return
